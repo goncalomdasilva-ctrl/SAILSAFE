@@ -1,6 +1,0 @@
-2026-07-05
-
-Criado esquema elétrico v1.
-Ligação dos ESCs concluída.
-Adicionado GPS.
-Configurado BNO055.
