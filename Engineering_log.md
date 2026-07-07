@@ -1,8 +1,8 @@
-# Engineering Diary
+# Engineering Log
 
-A viabilidade do projeto SAILSAFE tem vindo a ser analisada desde fevereiro de 2026. Durante o período letivo, o foco esteve na exploração de opções de arquitetura, integração de subsistemas e definição dos principais requisitos técnicos.
+A viabilidade do projeto SAILSAFE tem vindo a ser analisada desde fevereiro de 2026. Durante o período letivo, o foco esteve na exploração da arquitetura do sistema, na integração dos principais subsistemas e na definição dos requisitos técnicos iniciais.
 
-Uma das tentativas iniciais incluiu o desenho de uma PCB para integração elétrica. Essa abordagem revelou-se inadequada para distribuição de potência, sobretudo pela ausência de planos de cobre e pela fase ainda inicial de experiência em desenho de PCBs. Ainda assim, essa tentativa foi útil para clarificar restrições do sistema e reforçar a decisão de adotar uma arquitetura elétrica mais conservadora e robusta.
+Uma tentativa inicial de integração elétrica através de PCB revelou-se inadequada para distribuição de potência, sobretudo pela ausência de planos de cobre e pela fase ainda inicial de experiência em desenho de PCBs. Ainda assim, essa tentativa foi útil para clarificar restrições do sistema e reforçar a decisão de adotar uma arquitetura elétrica mais conservadora e robusta.
 
 Após várias iterações, foi definida uma arquitetura inicial suficientemente sólida para avançar para a fase de execução e validação experimental.
 
@@ -48,36 +48,39 @@ Após várias iterações, foi definida uma arquitetura inicial suficientemente 
 - A preparação inicial do Raspberry Pi exigiu adaptação de hardware disponível para configurar o microSD.
 
 ### Resultado do dia
-- O projeto ficou num estado técnico muito mais sólido em termos de arquitetura, documentação e preparação para testes de bancada.
+- O projeto ficou num estado técnico significativamente mais sólido em termos de arquitetura, documentação e preparação para testes de bancada.
 - O Raspberry Pi ficou operacional e preparado para integração futura com sensores e comunicação com o ESP32.
-- O projeto encontra-se a aguardar a chegada dos componentes para iniciar testes físicos.
+- O projeto ficou a aguardar a chegada dos componentes para iniciar testes físicos.
 
 ### Próximo passo
-- Testar comunicação Raspberry Pi → ESP32 por USB.
+- Testar a comunicação Raspberry Pi → ESP32 por USB.
 
 ## 2026-07-07
 
 ### Trabalho realizado
-- Iniciada a criação do repositório GitHub do projeto SAILSAFE.
-- Definida a estrutura inicial para documentação pública do projeto.
-- Preparado o conteúdo inicial do README e da organização de ficheiros.
-- Estruturados assistentes de IA para apoio à documentação, organização de tarefas e maior consistência na escrita técnica.
+- Criado o repositório GitHub público do projeto SAILSAFE.
+- Definida e ajustada a estrutura inicial do repositório para documentação, hardware e software.
+- Preparado e atualizado o README inicial do projeto.
+- Feito upload da documentação principal, ficheiros elétricos, ficheiro mecânico e código do ESP32.
+- Corrigida a organização inicial do repositório, removendo a pasta intermédia criada no primeiro upload.
+- Estruturadas ferramentas assistidas por IA para apoio à documentação, organização de tarefas e maior consistência na escrita técnica.
+- Criado um agente de revisão crítica para apoiar a discussão de decisões técnicas, identificar fragilidades e melhorar a consistência da argumentação do projeto.
 
 ### Decisões técnicas
-- Foi decidido começar com uma estrutura simples de repositório, suficientemente organizada para ser mantida sem fricção excessiva.
-- A documentação pública será construída de forma incremental, em vez de tentar formalizar tudo de uma só vez.
+- Foi mantida uma estrutura de repositório simples, suficientemente organizada para acompanhar a evolução do projeto sem introduzir formalismo excessivo.
+- A documentação pública será construída de forma incremental, acompanhando a evolução real do sistema.
+- O agente de revisão crítica será usado como ferramenta de apoio ao raciocínio técnico e à qualidade documental, sem substituir validação própria.
 
 ### Problemas / limitações
-- Curva de aprendizagem inicial do GitHub e da lógica de repositórios.
-- Ainda sem integração total dos ficheiros técnicos no repositório.
+- Curva de aprendizagem inicial do GitHub e da lógica de organização de repositórios.
+- Algumas limitações de visualização de ficheiros técnicos no GitHub exigiram a criação de versões complementares em formatos mais legíveis.
 
 ### Resultado do dia
-- O projeto passou a ter uma base inicial para documentação pública e portefólio técnico.
-- Ficou definido um caminho mais claro para organizar arquitetura, software, hardware e registos de evolução.
-- Os assistentes de IA passaram a integrar o processo como ferramenta de apoio à produtividade e revisão técnica, sem substituir validação própria.
+- O projeto passou a ter uma base pública organizada para documentação e portefólio técnico.
+- Ficou estabelecida uma estrutura mínima estável para evolução futura do repositório.
+- O processo de documentação ficou significativamente mais claro e sustentável.
+- O processo de tomada de decisão passou a contar com um mecanismo adicional de revisão crítica, mantendo validação técnica própria como regra.
 
 ### Próximo passo
-- Fazer upload da documentação principal, esquema elétrico, ficheiro 3D e código do ESP32 para o repositório.
-
-
-
+- Validar a comunicação Raspberry Pi → ESP32 por USB e preparar o primeiro teste funcional de integração em bancada.
+  
