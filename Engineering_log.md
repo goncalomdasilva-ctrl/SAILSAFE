@@ -83,4 +83,47 @@ Após várias iterações, foi definida uma arquitetura inicial suficientemente 
 
 ### Próximo passo
 - Validar a comunicação Raspberry Pi → ESP32 por USB e preparar o primeiro teste funcional de integração em bancada.
-  
+
+
+## 2026-07-08
+
+### Trabalho realizado
+- Validada comunicação Raspberry Pi 4 → ESP32 por USB (ligação detetada como /dev/ttyUSB0).
+- Confirmada interface USB-série CH341 no sistema.
+- Validada comunicação UART entre Raspberry Pi e ESP32.
+- Confirmado formato de comando textual:
+  L:10 R:10
+- Validada conversão interna no ESP32:
+  percentagem → PWM (ex.: 10% → 1100 µs).
+- Confirmado funcionamento de failsafe por perda de input (timeout → motores parados).
+- Criado script Python no Raspberry Pi para envio periódico de comandos (keep-alive).
+- Reestruturado parser UART do ESP32 para abordagem não bloqueante baseada em buffer + newline.
+
+### Problemas / limitações
+- Cabo USB inicial não suportava dados (sem deteção do ESP32).
+- Uso de screen causava envio inválido de comandos (carácter a carácter).
+- Diferença entre documentação e implementação (PWM vs percentagem).
+- Parser inicial (readStringUntil) introduzia risco de bloqueio.
+- Conflito de acesso à porta série ao usar simultaneamente screen e Python.
+
+### Decisões técnicas
+- Manter arquitetura:
+  - Raspberry Pi → controlo de alto nível  
+  - ESP32 → controlo em tempo real + failsafe
+- Congelar protocolo atual:
+  comando textual em percentagem (L:x R:y + newline)
+- Limitar output inicial a 0–30% para segurança em bancada.
+- Usar keep-alive como mecanismo normal e failsafe como redundância.
+
+### Resultado do dia
+- Cadeia de controlo RPi → ESP32 validada em bancada.
+- Protocolo básico de comando e segurança funcional.
+- Base sólida estabelecida para integração futura com ESCs e motores.
+
+### Próximo passo
+- Validar repetibilidade do keep-alive e comando STOP.
+- Evoluir comando para modelo throttle + steering.
+- Só depois iniciar integração com ESCs, motores e testes de potência.
+
+
+
