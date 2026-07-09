@@ -125,5 +125,34 @@ Após várias iterações, foi definida uma arquitetura inicial suficientemente 
 - Evoluir comando para modelo throttle + steering.
 - Só depois iniciar integração com ESCs, motores e testes de potência.
 
+### 2026-07-09
+
+#### Trabalho realizado
+- Receção dos principais componentes de propulsão (ESCs e restantes elementos do sistema, exceto GPS e bus bar negativo).
+- Avaliação do estado atual do projeto após validação da comunicação Raspberry Pi ↔ ESP32.
+- Definida estratégia de testes faseada com foco na validação isolada do ESP32 antes de integração completa.
+- Revisão das necessidades de instrumentação, identificando ausência de cabos para multímetro e falta de medição direta de corrente (sem wattmeter/INA219).
+- Planeamento da fase inicial de testes com ESC utilizando potência limitada e sem carga hidrodinâmica.
+
+#### Decisões técnicas
+- O Raspberry Pi será temporariamente removido da arquitetura de teste, trabalhando apenas com o ESP32 para reduzir complexidade e facilitar debugging.
+- Os testes com ESC serão realizados inicialmente com um único ESC, sem waterjet montado e com limitação de potência (<30%).
+- A medição de corrente é reconhecida como necessária para validação completa do sistema, sendo planeada aquisição de instrumentação adequada (wattmeter ou equivalente).
+- Mantida a abordagem incremental: firmware → ESC → dois ESCs → integração completa.
+
+#### Problemas / limitações
+- Ausência de cabos para o multímetro impede validação de tensões em carga.
+- Falta do bus bar negativo impede montagem final do sistema de potência.
+- Não existe ainda instrumento dedicado para medição de corrente.
+- ESCs ainda não foram calibrados nem testados.
+
+#### Resultado do dia
+- O projeto encontra-se pronto para transição da fase de validação de software para validação de hardware de potência.
+- Foi definido um plano claro e seguro para os primeiros testes com ESC.
+
+#### Próximo passo
+- Calibração e teste inicial de um ESC com o ESP32 em setup isolado.
+- Garantir funcionamento do STOP, failsafe e limites de saída antes de aplicar potência significativa.
+
 
 
