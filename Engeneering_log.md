@@ -218,3 +218,37 @@ comando textual em percentagem (L:x R:y + newline)
 * Confirmar o modelo exato, o procedimento de arming e a presença de BEC nos ESCs.
 * Comprar os materiais mecânicos e de laminação após confirmar disponibilidade, compatibilidade e quantidades.
 
+### 2026-07-12
+ 
+#### Trabalho realizado
+ 
+* Compra de contraplacado para os cascos e para a estrutura.
+* Iteração de vários modelos CAD (.step); consolidada a versão v3 do modelo: caixas centrais ocas em contraplacado de 9 mm com tampas, placa base a distribuir a carga da pilha de caixas pelas travessas 1 e 2, componentes internos modelados (baterias, bus bars, fusível principal, Raspberry Pi 4, ESP32, DC-DC, BNO055, ADS1015, módulo GPS), antena GPS relocalizada para o topo da tampa e coberturas de proteção sobre os ESCs.
+* Revisão do orçamento de massa com base nos volumes reais do modelo v3: ≈4,5–5,5 kg tal como modelado (madeira ≈2,6 kg, XPS ≈0,74 kg, fibra+epóxi ≈0,45 kg, restantes componentes ≈1,3 kg), invalidando a estimativa anterior de 1,8–2,2 kg.
+* Análise de compatibilidade massa/potência: a 5,5 kg, ≈110 W/kg e impulso/peso estimado de 0,4–0,55 — adequado a navegação em deslocamento e ao OBJ-001; planeio excluído. Calado estimado ≈31 mm (≈6 mm/kg), favorável à submersão das admissões dos waterjets.
+* Documento de arquitetura atualizado para v1.6: REQ-MEC-003, secções 5.3 e 17.2 e histórico de revisões.
+* Conversor DC-DC colocado em funcionamento, com saída estimada em ≈5,1 V reais.
+* Diagnóstico do multímetro: erro de escala consistente de ×1,86 confirmado com três referências independentes (LiPo a 11,8 V confirmados pelo carregador vs 22 lidos; pilha alcalina ~1,6 V vs 3,00 lidos; leitura do DC-DC coerente com o mesmo fator).
+#### Decisões técnicas
+ 
+* Alvo de saída do DC-DC fixado em 5,1 V (compensação da queda na cablagem até ao Raspberry Pi); ligação do Pi condicionada a verificação sob carga.
+* Validação do DC-DC feita por medição comparativa contra referência conhecida, dado o erro de escala do multímetro; valores absolutos deste multímetro considerados não fiáveis até substituição.
+* Meta de aligeiramento estrutural registada na v1.6: contraplacado de 5–6 mm nas caixas, travessas furadas ou em tubo de alumínio 20×20 e possível unificação das duas caixas (objetivo 3,5–4,0 kg).
+#### Problemas / limitações
+ 
+* Multímetro com leituras infladas por fator ≈1,86 (referência interna degradada); compartimento da pilha inacessível até agora, substituição pendente.
+* As leituras erradas causaram falso alarme inicial (baterias aparentemente a 21–22 V e DC-DC aparentemente a 9,4–9,6 V), consumindo tempo de diagnóstico.
+* A compra de contraplacado para os cascos pode implicar mudança da arquitetura de cascos (XPS + fibra → contraplacado), com impacto direto no orçamento de massa da v1.6; decisão ainda não formalizada.
+#### Resultado do dia
+ 
+* DC-DC operacional com saída estimada correta; baterias validadas como saudáveis (11,8 V confirmados pelo carregador).
+* Modelo CAD v3 com componentes integrados e correções estruturais; documentação de arquitetura atualizada para v1.6 com orçamento de massa realista.
+* Material estrutural (contraplacado) adquirido.
+#### Próximo passo
+ 
+* Adquirir multímetro fiável antes de qualquer teste com ESCs e motores.
+* Verificar a saída do DC-DC sob carga e remedir a referência no fim da sessão.
+* Decidir formalmente a arquitetura dos cascos (XPS + fibra vs contraplacado) e refazer o cálculo de massa antes de qualquer corte definitivo.
+* Manter a disposição à escala real antes do corte, conforme definido a 2026-07-11.
+
+  
