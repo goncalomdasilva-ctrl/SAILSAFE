@@ -1,4 +1,4 @@
-# Engineering Diary
+# Engineering log
 
 A viabilidade do projeto SAILSAFE tem vindo a ser analisada desde fevereiro de 2026. Durante o período letivo, o foco esteve na exploração de opções de arquitetura, integração de subsistemas e definição dos principais requisitos técnicos.
 
