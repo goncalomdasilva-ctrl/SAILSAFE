@@ -252,3 +252,35 @@ comando textual em percentagem (L:x R:y + newline)
 * Manter a disposição à escala real antes do corte, conforme definido a 2026-07-11.
 
   
+### 2026-07-13
+ 
+#### Trabalho realizado
+ 
+* Consolidação física da cadeia de alimentação de 5 V: soldaduras reforçadas, fusível adicionado ao circuito e termorretráctil aplicado em todas as ligações.
+* Validação da saída do conversor DC-DC: 5 V estáveis confirmados após a consolidação.
+* Análise comparativa das duas vias de alimentação do Raspberry Pi 4: entrada USB-C (com cabo A-para-C descarnado) vs pinos GPIO (5 V nos pinos 2/4, GND nos pinos 6/14).
+* Avaliação dos cabos disponíveis: cabo A-para-C descarnado considerado subdimensionado para a corrente do Pi 4 (condutores finos, retorno pela malha de blindagem); identificado cabo micro-B para a ligação Pi → ESP32.
+* Definição do procedimento de identificação dos pinos GPIO com multímetro (continuidade pino 2 ↔ pino 4; continuidade pino 6 ↔ carcaça USB) e do procedimento de soldadura (solda no topo do pino, ≤3–4 s, termorretráctil, alívio de tensão com abraçadeira ao furo de montagem).
+#### Decisões técnicas
+ 
+* Alimentar o Raspberry Pi 4 pelos pinos GPIO (2/4 = +5 V; 6/14 = GND) com fio de 0,75 mm², usando os dois pares para dividir corrente e dar redundância mecânica; via USB-C mantida como alternativa.
+* Alimentar o ESP32 exclusivamente pelo cabo USB a partir do Pi (dados + alimentação); não ligar VIN em simultâneo com USB.
+* Instalar condensador eletrolítico (470–1000 µF, ≥10 V) junto ao ponto de entrega no Pi, como reservatório para picos de corrente; cerâmico de 100 nF a adicionar quando disponível.
+* Riscos de soldadura identificados: ponte entre pino 2 (5 V) e pino 1 (3,3 V) é destrutiva; verificação final de continuidade 5 V↔GND e 5 V↔3,3 V obrigatória antes de dar corrente.
+* Critério de aceitação da alimentação: vcgencmd get_throttled = 0x0 com o sistema em bateria.
+#### Problemas / limitações
+ 
+* Apenas disponível o condensador eletrolítico; o cerâmico de 100 nF fica pendente (impacto reduzido: filtra ruído de alta frequência, não afeta a estabilidade de tensão média).
+* Multímetro de confiança ainda por adquirir; medições de corrente e verificações finais dependem dele.
+#### Resultado do dia
+ 
+* Cadeia de alimentação de 5 V consolidada e protegida (fusível + termorretráctil), com saída estável.
+* Arquitetura de alimentação do par Pi/ESP32 decidida e documentada: DC-DC → GPIO do Pi; Pi → USB → ESP32.
+* Procedimentos de identificação de pinos, soldadura e verificação definidos antes da execução.
+#### Próximo passo
+ 
+* Soldar os rabichos de 0,75 mm² aos pinos GPIO com o procedimento definido.
+* Primeiro arranque do Pi em bateria; verificar get_throttled; só depois ligar o ESP32 e repetir.
+* Testar o cabo micro-B (deteção de /dev/ttyUSB0) e correr keep-alive + failsafe integralmente em bateria.
+* Comprar multímetro e condensador cerâmico de 100 nF.
+
