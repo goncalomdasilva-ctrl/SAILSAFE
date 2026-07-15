@@ -284,3 +284,67 @@ comando textual em percentagem (L:x R:y + newline)
 * Testar o cabo micro-B (deteção de /dev/ttyUSB0) e correr keep-alive + failsafe integralmente em bateria.
 * Comprar multímetro e condensador cerâmico de 100 nF.
 
+#### 2026-07-14
+
+##### Trabalho realizado
+- Soldadura do condensador eletrolítico junto ao ponto de alimentação do Raspberry Pi 4.
+- Soldadura dos cabos de alimentação diretamente aos pinos de alimentação do Raspberry Pi:
+  - +5 V nos pinos físicos 2 e 4;
+  - GND nos pinos físicos 6 e 14.
+- Isolamento das ligações e preparação da cablagem para alimentar o Raspberry Pi através do conversor DC-DC.
+- Primeiro ensaio de alimentação do Raspberry Pi através do circuito do barco.
+- Observação dos LEDs de alimentação e atividade durante o arranque.
+- Teste comparativo com alimentação através da entrada USB-C.
+- Ligação do cartão microSD ao computador para diagnóstico.
+- Confirmação de que o cartão era reconhecido fisicamente e de que a partição `bootfs` permanecia acessível.
+- Regravação do Raspberry Pi OS através do Raspberry Pi Imager.
+- Nova configuração do Wi-Fi, hostname, utilizador e acesso por SSH.
+
+##### Decisões técnicas
+- Não alimentar simultaneamente o Raspberry Pi pela entrada USB-C e pelos pinos GPIO.
+- Validar inicialmente o Raspberry Pi sem o ESP32, sensores ou outros periféricos ligados.
+- Confirmar primeiro o funcionamento do Raspberry Pi através de uma fonte USB-C de confiança.
+- Repetir posteriormente o teste com alimentação exclusiva através da bateria e do conversor DC-DC.
+- Utilizar `sudo poweroff` antes de interromper fisicamente a alimentação, sempre que existir acesso ao sistema.
+- Manter `vcgencmd get_throttled` como principal verificação interna da qualidade da alimentação.
+- Adotar `throttled=0x0` como critério inicial de aceitação da alimentação pelo circuito do barco.
+
+##### Problemas / limitações
+- Durante o primeiro ensaio existiu receio de danificar o Raspberry Pi devido à alimentação direta pelos pinos GPIO.
+- A alimentação foi interrompida antes de o sistema concluir o arranque e sem encerramento controlado.
+- Após a interrupção, ocorreu provável corrupção de ficheiros ou da configuração do Raspberry Pi OS no cartão microSD.
+- O Raspberry Pi deixou de ficar acessível por SSH e não apareceu de forma fiável na rede local.
+- Alguns endereços IP encontrados respondiam a `ping`, mas recusavam ligações na porta 22, dificultando a identificação do Raspberry Pi.
+- A tentativa de ativar manualmente o SSH através da partição `bootfs` não resolveu imediatamente o problema.
+- Foi necessário regravar o cartão microSD para recuperar uma instalação limpa e eliminar a incerteza causada pela possível corrupção de ficheiros.
+
+##### Resultado do dia
+- Não foram observados sinais imediatos de dano elétrico no Raspberry Pi, como fumo, cheiro a queimado, aquecimento rápido ou perda do LED vermelho de alimentação.
+- O cartão microSD não ficou fisicamente danificado: continuou a ser reconhecido pelo computador e a partição `bootfs` permaneceu acessível.
+- A falha de acesso foi associada a corrupção lógica ou perda da configuração do sistema, e não a uma avaria física confirmada.
+- O Raspberry Pi OS foi regravado com sucesso.
+- O hostname `sailsafe-pi`, o utilizador, o Wi-Fi e o acesso por SSH foram novamente configurados.
+- O Raspberry Pi voltou a ficar preparado para acesso remoto.
+- A alimentação através do circuito soldado ficou pendente de validação completa com o Raspberry Pi arrancado exclusivamente pela bateria e pelo conversor DC-DC.
+
+##### Lições aprendidas
+- O LED vermelho confirma a presença de alimentação, mas não garante, por si só, que a tensão esteja correta e estável.
+- O LED verde pode piscar intensamente durante o arranque e apenas ocasionalmente depois, sem que isso represente necessariamente uma falha.
+- Interromper a alimentação durante a atividade do cartão pode corromper o sistema de ficheiros sem danificar fisicamente o microSD.
+- O cartão microSD deve ser regravado quando a instalação ainda não contém dados importantes e o estado do sistema fica incerto.
+- A alimentação do Raspberry Pi deve ser validada de forma incremental, começando pelo Raspberry Pi isolado.
+- Deve existir um procedimento de encerramento seguro antes de desligar fisicamente a alimentação.
+- A validação visual dos LEDs deve ser complementada por verificações internas do sistema.
+
+##### Próximo passo
+- Confirmar o arranque e o acesso por SSH com alimentação USB-C.
+- Encerrar corretamente o Raspberry Pi com `sudo poweroff`.
+- Retirar completamente a alimentação USB-C.
+- Arrancar o Raspberry Pi exclusivamente através da bateria e do conversor DC-DC.
+- Confirmar que não existe nenhuma outra fonte ligada simultaneamente à linha de 5 V.
+- Após o arranque, executar `vcgencmd get_throttled`.
+- Confirmar que o resultado é `throttled=0x0`.
+- Executar `uptime` para verificar se o Raspberry Pi não reiniciou.
+- Consultar os registos de possíveis problemas de alimentação com `dmesg | grep -i -E "under-voltage|voltage|thrott"`.
+- Manter o Raspberry Pi ligado durante 10–15 minutos e repetir as verificações.
+- Só depois ligar o ESP32 por USB e repetir o teste de estabilidade da alimentação.
