@@ -348,3 +348,66 @@ comando textual em percentagem (L:x R:y + newline)
 - Consultar os registos de possíveis problemas de alimentação com `dmesg | grep -i -E "under-voltage|voltage|thrott"`.
 - Manter o Raspberry Pi ligado durante 10–15 minutos e repetir as verificações.
 - Só depois ligar o ESP32 por USB e repetir o teste de estabilidade da alimentação.
+
+### 2026-07-15
+
+#### Trabalho realizado
+- Validação completa da alimentação do Raspberry Pi 4 através do conversor DC-DC ligado aos pinos GPIO.
+- Execução de stress test (CPU 100%) para validação de estabilidade elétrica.
+- Monitorização do estado de alimentação através de vcgencmd get_throttled.
+- Confirmação de ausência de undervoltage e throttling durante operação sob carga.
+- Configuração e validação do systemd para execução automática do software.
+- Criação do serviço sailsafe.service em /etc/systemd/system/.
+- Debug de erros de configuração do systemd:
+  - Correção de paths inválidos (/etc/system vs /etc/systemd/system).
+  - Correção do utilizador (pi → goncalo).
+  - Correção do caminho do script Python.
+- Integração inicial com GitHub:
+  - Clonagem do repositório SAILSAFE para o Raspberry Pi.
+  - Introdução do fluxo de deploy baseado em git (git pull).
+- Diagnóstico de falha de execução do serviço:
+  - Identificação de ausência de código no Raspberry Pi.
+  - Identificação de inconsistência na estrutura do repositório.
+- Revisão e refactor do código Python de controlo:
+  - Implementação de retry automático da porta serial.
+  - Tratamento de exceções na escrita e leitura.
+  - Reconexão automática em caso de falha.
+  - Tornar o código compatível com execução via systemd.
+
+#### Decisões técnicas
+- Utilizar systemd como mecanismo de execução automática do software no Raspberry Pi.
+- Utilizar GitHub como fonte única de verdade para o código (deploy via git pull).
+- Definir um ponto de entrada único para o sistema: software/main.py.
+- Implementar robustez mínima no código antes de integração com hardware (retry + reconexão).
+- Adiar implementação de udev rules para fixação da porta serial para fase seguinte.
+- Manter potência de saída limitada (≈10%) para testes iniciais.
+
+#### Problemas / limitações
+- Estrutura do repositório GitHub inconsistente e não alinhada com o systemd.
+- Ausência inicial do código no Raspberry Pi após reset do sistema.
+- Dependência de path fixo (/dev/ttyUSB0) sem garantia de persistência.
+- Possível ausência de dependências Python (ex: pyserial).
+- Ausência de kill-switch físico/remoto (restrição já conhecida).
+- Código ainda sem validação completa com hardware real (ESP32).
+
+#### Resultado do dia
+- Alimentação do Raspberry Pi validada sob carga máxima (sem throttling).
+- systemd configurado corretamente e funcional ao nível de sistema.
+- Pipeline de deploy (GitHub → Raspberry Pi) definido e operacional.
+- Código Python atualizado para versão robusta compatível com operação contínua.
+- Sistema global próximo de execução autónoma.
+
+#### Riscos identificados
+- Porta serial dinâmica (/dev/ttyUSB0 pode mudar após reboot).
+- Falha de comunicação com ESP32 pode levar a ausência de controlo.
+- Ausência de kill-switch mantém risco operacional em testes reais.
+- Estrutura do repositório pode causar erros de integração futuros.
+
+#### Próximo passo
+- Confirmar estrutura final do repositório:
+  - SAILSAFE/software/main.py
+- Executar teste manual do script Python no Raspberry Pi.
+- Validar funcionamento do serviço systemd (estado active running).
+- Instalar dependências Python necessárias (pyserial).
+- Testar comunicação real Raspberry Pi ↔ ESP32.
+- Implementar udev rule para fixar a porta serial.
