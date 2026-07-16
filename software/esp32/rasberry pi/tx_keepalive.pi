@@ -1,49 +1,88 @@
 import time
 import serial
+import sys
 
 PORTA = "/dev/ttyUSB0"
 BAUD = 115200
-PERIODO_S = 0.2   # 200 ms
+PERIODO_S = 0.2  # 200 ms
+
 
 def clamp(x, lo=0, hi=100):
     return max(lo, min(hi, int(round(x))))
+
 
 def format_cmd(left, right):
     left = clamp(left)
     right = clamp(right)
     return f"L: {left} R: {right}\n"
 
+
+def abrir_serial():
+    """
+    Tenta abrir a porta serial com retry infinito.
+    Evita crash do systemd quando ESP32 não está ligado.
+    """
+    while True:
+        try:
+            ser = serial.Serial(PORTA, BAUD, timeout=0)
+            print("[INFO] Porta aberta")
+            return ser
+        except serial.SerialException:
+            print("[ERRO] Porta não disponível, retry em 1s...")
+            time.sleep(1)
+
+
 def main():
-    ser = serial.Serial(PORTA, BAUD, timeout=0)
+    ser = abrir_serial()
+
+    # tempo para ESP32 reiniciar (USB)
     time.sleep(2)
 
     left = 10
     right = 10
 
-    print("[INFO] Porta aberta")
-    print("[INFO] Ctrl+C para sair")
+    print("[INFO] Loop iniciado")
 
     try:
         while True:
             cmd = format_cmd(left, right)
 
-            ser.write(cmd.encode("utf-8"))
+            # enviar comando
+            try:
+                ser.write(cmd.encode("utf-8"))
+            except serial.SerialException:
+                print("[ERRO] Falha na escrita, a reabrir porta...")
+                ser.close()
+                ser = abrir_serial()
+                continue
 
-            if ser.in_waiting:
-                line = ser.readline().decode("utf-8", errors="ignore").strip()
-                if line:
-                    print("[RX]", line)
+            # leitura não bloqueante
+            try:
+                if ser.in_waiting:
+                    line = ser.readline().decode("utf-8", errors="ignore").strip()
+                    if line:
+                        print("[RX]", line)
+            except serial.SerialException:
+                print("[ERRO] Falha na leitura, a reabrir porta...")
+                ser.close()
+                ser = abrir_serial()
+                continue
 
             print("[TX]", cmd.strip())
 
             time.sleep(PERIODO_S)
 
     except KeyboardInterrupt:
-        stop_cmd = format_cmd(0, 0)
-        ser.write(stop_cmd.encode("utf-8"))
-        print("\n[INFO] STOP enviado")
+        print("\n[INFO] Ctrl+C recebido")
 
     finally:
+        try:
+            stop_cmd = format_cmd(0, 0)
+            ser.write(stop_cmd.encode("utf-8"))
+            print("[INFO] STOP enviado")
+        except:
+            pass
+
         ser.close()
         print("[INFO] Porta fechada")
 
