@@ -411,3 +411,70 @@ comando textual em percentagem (L:x R:y + newline)
 - Instalar dependências Python necessárias (pyserial).
 - Testar comunicação real Raspberry Pi ↔ ESP32.
 - Implementar udev rule para fixar a porta serial.
+
+### 2026-07-16
+
+#### Trabalho realizado
+- Revisão crítica do plano de desenvolvimento com base em restrições logísticas (impossibilidade de receber encomendas durante duas semanas).
+- Definição de estratégia de desenvolvimento em duas fases:
+  - Semana fora: foco exclusivo em software e integração lógica.
+  - Regresso: início da construção da estrutura mecânica com apoio especializado.
+- Análise detalhada do sistema de segurança e decisão de adiar a implementação do kill-switch remoto baseado em RC.
+- Introdução de uma solução temporária de segurança:
+  - utilização de loop key XT90 como método de corte manual de energia.
+- Revisão da arquitetura elétrica para acomodar a ausência de kill-switch remoto:
+  - bateria → loop key → fusível principal → distribuição → ESCs.
+- Planeamento da distribuição de fusíveis:
+  - fusível principal (~80A estimado)
+  - fusíveis individuais de 40A por ESC.
+- Definição de política de testes para fase atual:
+  - testes de motores apenas em bancada
+  - potência limitada
+  - sistema fisicamente contido
+- Decisão de adiar aquisição de sistema RC (rádio + receiver) para fase posterior, por restrições de orçamento.
+- Consolidação da estratégia de compras:
+  - prioridade a conectores (XT90, XT60), fusíveis e solução de corte manual
+  - adiamento de componentes não críticos para a fase atual.
+- Planeamento detalhado do uso do tempo durante as próximas semanas:
+  - desenvolvimento de software durante o período fora
+  - desenvolvimento mecânico após regresso
+
+#### Decisões técnicas
+- Implementar loop key XT90 como solução de kill manual temporária.
+- Adiar sistema de kill-switch remoto baseado em RC para fase posterior.
+- Adiar aquisição de rádio e receiver devido a restrições de orçamento e ausência de necessidade imediata.
+- Separar claramente fases de desenvolvimento:
+  - Fase 1: software e integração lógica
+  - Fase 2: estrutura e integração física
+- Limitar testes de potência até existência de sistema de segurança mais robusto.
+
+#### Problemas / limitações
+- Ausência de conectores adicionais XT90 limita montagem elétrica completa.
+- Impossibilidade de receber encomendas durante duas semanas impede avanço em subsistema de potência.
+- Ausência de multímetro impede validação elétrica detalhada (tensão, continuidade, quedas).
+- Ausência de kill-switch remoto limita segurança em testes com motores.
+- Dependência de ferramentas e apoio externo para construção da estrutura.
+
+#### Resultado do dia
+- Estratégia global do projeto ajustada à realidade logística e financeira.
+- Arquitetura elétrica simplificada e adaptada à fase atual.
+- Plano de desenvolvimento para as próximas semanas claramente definido.
+- Riscos principais identificados e mitigados dentro do possível.
+
+#### Riscos identificados
+- Dependência de corte manual de energia (loop key) como único mecanismo de segurança.
+- Potencial erro de ligação elétrica sem instrumentação adequada.
+- Possível atraso na integração de potência devido a falta de componentes.
+- Risco de comportamento inesperado dos ESCs em cortes sob carga.
+
+#### Próximo passo
+- Finalizar software do Raspberry Pi:
+  - garantir execução estável via systemd
+  - implementar logging básico
+  - integrar leitura da IMU
+- Validar comunicação contínua Raspberry Pi ↔ ESP32.
+- Preparar estrutura do código para integração futura do controlo (heading hold).
+- Definir layout físico preliminar da estrutura antes da construção.
+- Adquirir conectores e componentes elétricos assim que possível após regresso.
+
+  
