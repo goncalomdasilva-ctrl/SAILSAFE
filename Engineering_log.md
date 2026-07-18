@@ -478,3 +478,95 @@ comando textual em percentagem (L:x R:y + newline)
 - Adquirir conectores e componentes elétricos assim que possível após regresso.
 
   
+### 2026-07-17
+
+#### Trabalho realizado
+- Revisão do feedback técnico recebido sobre as prioridades imediatas do projeto: implementação de um corte físico independente, desenvolvimento de heading hold antes da navegação por waypoints e logging completo desde o início dos testes.
+- Revisão da arquitetura de segurança da Fase 1, tendo em conta a indisponibilidade temporária de um kill-switch remoto.
+- Definição de uma solução temporária de corte manual através de uma loop key com conector XT90.
+- Definição da cadeia elétrica de segurança: bateria de propulsão → loop key XT90 → fusível principal → distribuição → fusíveis individuais → ESCs.
+- Atualização do documento principal de arquitetura da versão v1.9 para v1.10.
+- Adição da secção 10.1 — Arquitetura de Segurança Temporária — Fase 1.
+- Adição de SAFE-007 para falha total do sistema, com corte manual imediato de energia através da loop key.
+- Adição de TEST-011 para validar o comportamento do sistema durante a remoção da loop key.
+- Adição de RISK-009, relativo ao possível comportamento imprevisível dos ESCs durante um corte de energia sob carga.
+- Atualização de OPEN-008 para registar a loop key como solução temporária e manter o kill-switch remoto como requisito obrigatório antes de operação autónoma ou testes sem corda.
+- Inclusão explícita da loop key no diagrama da arquitetura elétrica.
+- Revisão do estado do fusível principal de 100 A.
+- Definição do plano de desenvolvimento do software até 2026-07-26.
+- Separação entre as funcionalidades que podem ser desenvolvidas sem hardware físico e as validações que dependem da chegada da loop key, GPS, ESCs e restantes componentes.
+- Definição de uma abordagem baseada em fontes simuladas para desenvolver e testar o heading hold e a navegação por waypoints sem depender imediatamente do BNO055 ou do GPS físico.
+
+#### Decisões técnicas
+- Utilizar temporariamente uma loop key XT90 como meio manual de corte da alimentação da propulsão durante a Fase 1.
+- Instalar a loop key entre a bateria de propulsão e o fusível principal, garantindo que a sua remoção desenergiza todo o circuito de potência dos ESCs.
+- Manter o kill-switch remoto independente como requisito obrigatório antes de testes sem corda, operação autónoma ou operação afastada da margem.
+- Não considerar a loop key como substituto definitivo do kill-switch remoto, uma vez que exige a presença física do operador e não permite corte à distância.
+- Não energizar os ESCs antes de existir um meio físico, imediato e independente de cortar a alimentação.
+- Não transportar os ESCs para os trabalhos de software enquanto não estiver prevista a sua energização; os ESCs poderão ser levados apenas para inspeção, identificação de ligações ou preparação da montagem.
+- Manter os testes em água proibidos enquanto não existir um sistema de recuperação por corda, supervisão direta e potência limitada.
+- Alterar o estado do fusível principal de 100 A de “confirmado” para estimativa baseada no dimensionamento teórico de dois ESCs de 40 A.
+- Validar o valor definitivo do fusível principal apenas depois de existirem medições reais de corrente, incluindo picos de arranque e funcionamento simultâneo dos dois motores.
+- Implementar e validar primeiro o heading hold, antes de avançar para a navegação por waypoints.
+- Começar o heading hold com um controlador proporcional simples, adiando a utilização de PI ou PID até existirem dados físicos que justifiquem maior complexidade.
+- Normalizar o erro angular do heading para o intervalo entre −180° e +180°, evitando erros durante a transição entre 359° e 0°.
+- Separar as fontes de dados da lógica de controlo, permitindo utilizar heading e posição simulados enquanto o BNO055 e o GPS físico não estiverem disponíveis.
+- Criar uma fonte de posição simulada para desenvolver o cálculo de distância, bearing, raio de chegada e transição entre waypoints.
+- Identificar explicitamente todos os dados simulados como sintéticos, evitando apresentá-los como medições reais.
+- Implementar o logging antes dos testes físicos dos ESCs e antes da validação da navegação autónoma.
+- Criar um ficheiro CSV diferente para cada sessão, contendo timestamps, estado do sistema, modo de controlo, comandos, estado da comunicação, failsafe, heading, GPS e dados dos waypoints.
+- Implementar uma máquina de estados com, pelo menos, BOOT, DISARMED, ARMED, RUNNING, FAILSAFE e ERROR.
+- Garantir que o sistema inicia sempre em estado seguro e que os comandos de movimento são rejeitados enquanto o sistema estiver desarmado.
+- Garantir que o regresso da comunicação após um failsafe não provoca movimento automático; deverá ser exigido um novo comando explícito de arming.
+- Manter o comando STOP com prioridade absoluta sobre qualquer modo manual ou automático.
+- Definir como objetivo para 2026-07-26 a conclusão do software MVP em bancada lógica e simulação, sem declarar ainda o sistema autónomo como fisicamente validado.
+
+#### Problemas / limitações
+- A loop key XT90 ainda não se encontra disponível, ficando prevista apenas para a semana seguinte.
+- A ausência da loop key impede, por razões de segurança, a energização dos ESCs através da bateria de propulsão.
+- O GPS físico ainda não se encontra disponível.
+- A integração e calibração física do BNO055 não estão concluídas.
+- O valor de 100 A do fusível principal ainda não foi confirmado através de medições reais.
+- O comportamento dos ESCs durante a inicialização, arming, timeout, corte de energia e reposição da alimentação permanece por validar.
+- O neutro real, a gama de comando e a resposta dos ESCs ainda não foram medidos.
+- A afinação do heading hold não pode ser concluída apenas por simulação, pois dependerá da resposta física do barco, da inércia, dos waterjets, do vento e das condições da água.
+- A navegação por waypoints poderá ser implementada com dados simulados, mas continuará pendente de validação com GPS físico e testes na água.
+- O prazo até 2026-07-26 permite concluir o MVP de software, mas não permite garantir a validação física completa de todos os subsistemas que ainda não estão disponíveis.
+
+#### Resultado do dia
+- Documento principal de arquitetura atualizado e fechado como SAILSAFE Architecture v1.10.
+- Arquitetura temporária de segurança com loop key XT90 definida e documentada.
+- Limitações da solução temporária e condições obrigatórias para testes registadas formalmente.
+- Estado do fusível principal corrigido para refletir que o valor de 100 A continua por validar experimentalmente.
+- Decisão tomada de não energizar os ESCs antes da chegada da loop key ou da disponibilidade de outro meio de corte físico devidamente dimensionado.
+- Confirmado que a ausência temporária da loop key e do GPS não bloqueia o desenvolvimento do software.
+- Definida uma estratégia de desenvolvimento com GPS e heading simulados.
+- Heading hold priorizado antes da navegação por waypoints.
+- Logging definido como funcionalidade obrigatória antes dos testes físicos.
+- Plano de trabalho estabelecido para concluir o software MVP até 2026-07-26.
+- Validações físicas pendentes claramente separadas das funcionalidades implementáveis em simulação.
+
+#### Lições aprendidas
+- Um failsafe por timeout protege contra perda de comunicação, mas não cobre todos os modos de falha possíveis do software, ESP32 ou ESCs.
+- Um botão STOP por software não substitui um corte físico independente da eletrónica de controlo.
+- Uma solução temporária de segurança deve ter as suas limitações explicitamente documentadas, não podendo ser apresentada como equivalente à solução definitiva.
+- “Implementado” e “validado fisicamente” são estados diferentes e devem ser registados separadamente.
+- A ausência temporária de sensores ou atuadores não impede o desenvolvimento quando o software utiliza interfaces bem separadas e fontes simuladas.
+- O heading hold deve ser validado antes dos waypoints, porque a navegação por GPS depende de um controlo de rumo estável e previsível.
+- O logging deve ser desenvolvido antes dos ensaios físicos, para garantir que qualquer falha ou comportamento inesperado pode ser posteriormente analisado.
+- Os dados sintéticos são adequados para testar a lógica, desde que sejam claramente identificados e não sejam confundidos com medições reais.
+- A complexidade do controlador deve aumentar apenas quando os resultados experimentais demonstrarem essa necessidade.
+
+#### Próximo passo
+- Consolidar e congelar o protocolo de comunicação Raspberry Pi → ESP32.
+- Rever o parser não bloqueante do ESP32 e confirmar a utilização de newline como delimitador.
+- Implementar uma máquina de estados explícita no ESP32.
+- Garantir arranque em DISARMED e rejeição de movimento antes de um comando ARM válido.
+- Confirmar o funcionamento do keep-alive a 5 Hz e do timeout de comunicação.
+- Garantir que STOP tem prioridade sobre todos os restantes comandos.
+- Criar o sistema de logging por sessão no Raspberry Pi.
+- Criar fontes simuladas de heading e posição.
+- Implementar e testar a normalização do erro angular.
+- Implementar o controlador proporcional inicial de heading hold.
+- Desenvolver a gestão de waypoints utilizando posições sintéticas.
+- Adiar a energização dos ESCs até à chegada da loop key e à preparação da cadeia de potência protegida por fusíveis.
