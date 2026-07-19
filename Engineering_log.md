@@ -652,3 +652,61 @@ comando textual em percentagem (L:x R:y + newline)
 - Fazer commit da nova estrutura limpa.
 - Iniciar implementação de main.py.
 - Integrar modelo throttle + steering.
+
+
+### 2026-07-19
+
+#### Trabalho realizado
+- Estudo dedicado do centro de gravidade e da distribuição de peso (documento SAILSAFE_estudo_CG_distribuicao_peso_v1), com orçamento de massas por componente (posições x/z), hidrostática integrada da geometria v5 e comparação de quatro configurações.
+- Quantificação do problema na configuração v5: pilha placa base → caixa de baterias → caixa IP66 com topo a ≈385 mm e z_G ≈ 142 mm (≈105 mm acima da linha de água; calado estático ≈37 mm).
+- Avaliação das opções: B1 (pilha pousada no convés, −8 mm), B2 (caixa suspensa entre travessas, −24 mm), A (duas baterias alojadas nos cascos, −33 mm) e C (combinada, −42 mm teóricos).
+- Cálculo do lastro equivalente: igualar a opção C com chumbo no fundo exigiria ≈2,7 kg (+46 % de massa, +19 % de área molhada); lastro rejeitado.
+- Revisão da arquitetura elétrica para três circuitos independentes, sem cabos de potência a atravessar a ponte: por casco, LiPo 5000 → fusível 40 A → loop key XT90-S → ESC → waterjet; na caixa IP66, LiPo 2200 dedicada → fusível/interruptor → DC-DC 5 V → Raspberry Pi + ESP32 + sensores.
+- Definição da estratégia de comunicação: Wi-Fi do Pi para desenvolvimento; recetor ExpressLRS 868 MHz (UART/CRSF) como elo de segurança planeado, com canal de três posições desarmado / autónomo / recall; LoRa/4G apenas como evolução posterior.
+- Definição das regras de recall/RTH: na Fase 1, recall = paragem dos motores; na Fase 2, recall = Return-To-Home com posição de casa gravada no momento de armar, recusa de arming sem fix GPS e station-keeping à chegada; perda de ligação executa a mesma ação do recall.
+- Atualização do documento principal de arquitetura de v1.10 para v1.11: nova secção 20, tabelas vivas (REQ, energia 5.2, BOM, Apêndice B), OPEN-003 fechado e OPEN-006/OPEN-008 atualizados.
+- Geração do modelo CAD v6 em STEP (25 sólidos nomeados: cascos com alojamentos escavados, travessas, longarinas, escotilhas, baterias, caixa IP66, calços, transom inserts e waterjets).
+- Verificação geométrica 3D com identificação de dois conflitos que o estudo em vista lateral não apanhou: o túnel entre cascos tem 118 mm e a caixa IP66 tem 155 mm de largura (a caixa não pode descer abaixo do convés); e o vão T1–T2 da v5 (133 mm) não recebe nem os alojamentos (165 mm) nem a caixa (204 mm).
+- Consolidação do layout v6: T2 reposicionada para X = 485 (vão T1–T2 de 217,5 mm); alojamentos com interior 165×62, centros X = 341 e Y = ±123, fundo interior a z = 45; caixa IP66 pousada em quatro calços de 6 mm ao nível do convés (fundo a z = 152), retida por ripas nas faces de T1/T2; longarinas de convés divididas em dois troços por casco (interrompidas nas escotilhas).
+- Recalculo com as cotas finais: z_G ≈ 107 mm (−35 mm vs v5), massa estimada ≈6,2 kg, calado ≈39 mm, x_G ≈ 474 vs LCB ≈ 456 (ligeiro caimento à popa, favorável à alimentação dos jatos).
+- Emissão da blueprint madeira v6 (3 folhas: vistas de conjunto, lista de corte revista e detalhes dos alojamentos e do apoio da caixa), em substituição da folha v5.
+- Definição prática do GND comum na nova topologia: referência exclusivamente pelos fios de GND das fichas servo dos ESCs até ao ESP32, num único ponto na caixa IP66; sense de tensão das duas baterias de propulsão por fio único de positivo com resistência de ≈10 kΩ na origem e divisor junto ao ADS1015.
+- Definição construtiva das loop keys: fêmea XT90-S em série no positivo (ambos os fios da tomada são positivo), chave em macho com pinos em ponte de 12 AWG, montada em poço recortado no convés entre a escotilha e o ESC, com cordão e boia; fusível dentro do alojamento, junto à bateria.
+- Definição da sequência de operação: eletrónica primeiro (ESP32 a emitir neutro), só depois inserir as chaves; desarme pela ordem inversa.
+
+#### Decisões técnicas
+- Adotada a opção C revista (v6) como arquitetura mecânica: duas baterias de propulsão alojadas nos cascos, eliminação da caixa de baterias e da placa base (peças 3–9 da lista de corte) e caixa IP66 ao nível do convés.
+- Rejeitado o uso de lastro para baixar o centro de gravidade; reservados apenas 50–100 g para acerto fino do caimento após a pesagem real.
+- Adotada a topologia de três circuitos elétricos independentes; a ligação em estrela entre negativos definida a 2026-07-11 fica sem efeito, substituída pela referência por GND de sinal.
+- Adotados dois loop keys (um por casco) como corte manual, substituindo o loop key único na distribuição central; fusível principal de 100 A e bus bars eliminados (proteção por fusível de 40 A junto a cada bateria).
+- Rejeitado o corte de energia por rádio com relé ou MOSFET no caminho de potência: num barco autónomo, o corte remoto correto atua no sinal (STOP/recall por software), porque um corte de energia em perda de ligação impediria o próprio RTH; interruptor de estado sólido comandado pelo ESP32 registado apenas como upgrade opcional futuro.
+- Ligar o sense de tensão a jusante da tomada do loop, de modo a que a mesma medição indique também o estado armado/desarmado de cada casco; o modo autónomo deverá recusar arming com um casco desarmado.
+- Manter as regras LiPo (18.4) estendidas aos alojamentos: forro de contraplacado selado (sem contacto do LiPo com o XPS), respiro no rebordo da escotilha, carregamento sempre fora do barco — agora com três baterias.
+- TEST-011 passa a ser executado nos dois ramos de propulsão (remoção e inserção de cada chave, com verificação de ausência de movimento durante o arming).
+
+#### Problemas / limitações
+- Os ficheiros de arquitetura originais não estavam disponíveis na primeira sessão de análise; o estudo partiu da folha blueprint v5 e as massas da eletrónica são estimativas assinaladas, a substituir por pesagens reais.
+- Erratas identificadas no estudo de CG entretanto emitido: a profundidade do alojamento é de 101 mm desde o convés (fundo a z = 45; onde se lê 55 mm) e a posição ótima teórica das baterias (x ≈ 270) não é construível — as restrições geométricas fixam x = 341.
+- O z_G real da v6 (≈107 mm) é 7 mm pior do que o ótimo teórico da opção C (≈100 mm), por a caixa IP66 não poder descer abaixo do convés.
+- A segunda LiPo 5000, as loop keys XT90-S, o recetor ELRS e o multímetro fiável continuam por adquirir; todos os valores de massa, calado e trim permanecem "estimados", não "validados".
+- A descarga assimétrica das duas baterias de propulsão passa a ser um modo de degradação próprio da nova topologia; mitigação por saída com cargas iguais e compensação de trim por software, pendente de validação física.
+
+#### Resultado do dia
+- Arquitetura mecânica e elétrica revista e fechada como SAILSAFE Architecture v1.11, com cotas finais na blueprint madeira v6 e no modelo SAILSAFE_concept_v6.step.
+- Centro de gravidade reduzido de ≈142 para ≈107 mm (−25 %) sem lastro, com trim longitudinal dentro do alvo e autonomia duplicada pela segunda bateria.
+- Cadeia de segurança clarificada em três camadas: física (loop keys por casco), lógica (arming/recall por software e, futuramente, ELRS) e automática (failsafe por timeout e watchdog).
+- Conjunto de documentos coerente entre si: estudo de CG, documento de arquitetura v1.11, blueprint v6 e STEP v6.
+
+#### Lições aprendidas
+- Um estudo em vista lateral não substitui a verificação geométrica 3D: dois conflitos de montagem (largura do túnel e vãos entre travessas) só apareceram ao modelar o conjunto.
+- Mover massa para baixo é muito mais eficiente do que acrescentar lastro; o lastro paga-se em calado, área molhada e autonomia.
+- Num sistema autónomo, o kill remoto pertence à camada de sinal, não à de potência: cortar energia à distância destruiria a própria capacidade de o barco voltar.
+- Separar circuitos elimina classes inteiras de falhas (brownout do Pi, paralelo de baterias), mas cria modos novos (descarga assimétrica) que têm de ser monitorizados.
+- O ótimo teórico de um cálculo deve ser sempre confrontado com as restrições construtivas antes de entrar na documentação.
+
+#### Próximo passo
+- Pesar todos os componentes reais (waterjets, ESCs, caixa IP66 equipada, baterias) e recalcular z_G e x_G com as fórmulas do estudo de CG antes de qualquer corte.
+- Fazer a disposição à escala real no vão T1–T2 (escotilhas + caixa) para confirmar as folgas de 3 e 3,5 mm.
+- Adquirir a segunda LiPo 5000, as loop keys XT90-S (fêmeas + machos para as chaves e uma sobresselente), o divisor de tensão e o multímetro.
+- Atualizar o esquema elétrico KiCad para a topologia de três circuitos.
+- Prosseguir o plano de software de 2026-07-17 (máquina de estados, logging, heading hold com fontes simuladas), agora com o estado armado/desarmado por casco lido pelo sense.
