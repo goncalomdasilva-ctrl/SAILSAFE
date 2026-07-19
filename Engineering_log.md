@@ -570,3 +570,85 @@ comando textual em percentagem (L:x R:y + newline)
 - Implementar o controlador proporcional inicial de heading hold.
 - Desenvolver a gestão de waypoints utilizando posições sintéticas.
 - Adiar a energização dos ESCs até à chegada da loop key e à preparação da cadeia de potência protegida por fusíveis.
+
+
+### 2026-07-18
+
+#### Trabalho realizado
+- Configuração completa de autenticação SSH no Raspberry Pi para integração com GitHub.
+- Geração de chave SSH (ed25519) e validação de autenticação sem password.
+- Alteração do remote do repositório de HTTPS para SSH (git@github.com).
+- Validação da ligação através de git fetch.
+- Diagnóstico da ausência de ficheiros de comunicação (serial_link.py) no sistema local.
+- Identificação de inconsistências entre repositório GitHub e diretório local.
+- Execução de git pull para sincronização completa com o repositório remoto.
+- Análise da estrutura resultante após sincronização.
+- Identificação de estrutura incorreta no repositório:
+  - pasta com nome inválido ("rasberry pi")
+  - duplicação de diretórios (rasberrypi vs software/rasberry pi)
+- Tentativas de reorganização manual do sistema de ficheiros.
+- Identificação de erros recorrentes devido a:
+  - typos nos paths
+  - uso incorreto de nomes com espaços
+- Localização correta do ficheiro serial_link.py dentro de:
+  software/rasberry pi/
+- Início do processo de refactor da estrutura de pastas para arquitetura modular:
+  - raspberrypi/comms
+  - raspberrypi/control
+
+#### Decisões técnicas
+- Utilizar exclusivamente SSH para operações Git no Raspberry Pi.
+- Utilizar GitHub como fonte de verdade única para o código.
+- Corrigir a estrutura do repositório antes de avançar com desenvolvimento.
+- Adotar uma arquitetura modular:
+  - comms (comunicação)
+  - control (lógica de decisão)
+  - main (orquestração)
+- Eliminar nomes inválidos (espaços e typos) em diretórios.
+- Priorizar consistência de naming como requisito de arquitetura.
+- Adiar desenvolvimento de lógica de controlo até estrutura do projeto estar estável.
+
+#### Problemas / limitações
+- Estrutura do repositório inconsistente (pastas duplicadas e mal nomeadas).
+- Presença de espaços em nomes de diretórios (ex: "rasberry pi") a dificultar comandos shell.
+- Múltiplos typos nos paths (rasberry, rasberypi, rasberrpi).
+- Dificuldade em localizar ficheiros devido a inconsistência estrutural.
+- Confusão entre diretório local e conteúdo sincronizado do Git.
+- Falta de disciplina inicial no versionamento (ficheiros fora do repo).
+- Curva de aprendizagem do sistema de ficheiros Linux e comandos CLI.
+
+#### Resultado do dia
+- Sistema Git totalmente funcional via SSH.
+- Ligação Raspberry Pi ↔ GitHub estabilizada.
+- Repositório sincronizado com sucesso.
+- Ficheiro serial_link.py confirmado no repositório.
+- Problemas de localização de ficheiros diagnosticados.
+- Identificada a causa raiz:
+  - estrutura incorreta + naming inconsistente
+- Plano claro para reorganização do projeto.
+- Base estabelecida para modularização do software.
+
+#### Lições aprendidas
+- `git fetch` não atualiza ficheiros locais (necessário `git pull`).
+- A estrutura do repositório é tão importante como o código.
+- Espaços em nomes de diretórios criam fricção significativa.
+- Pequenos erros de naming (typos) escalam rapidamente em sistemas reais.
+- O Git não protege contra má organização — apenas versiona o estado atual.
+- Debug de sistemas reais depende de inspeção direta (ls, find, pwd).
+- AI não substitui visibilidade sobre o sistema real.
+- Integração (filesystem + Git + código) é mais difícil que programação isolada.
+
+#### Próximo passo
+- Eliminar estrutura duplicada (remover rasberrypi manual).
+- Renomear corretamente:
+  software/rasberry pi → raspberrypi
+- Remover pasta software após migração.
+- Criar estrutura final:
+  - raspberrypi/comms
+  - raspberrypi/control
+  - raspberrypi/logging
+- Mover serial_link.py para raspberrypi/comms/.
+- Validar execução do módulo de comunicação isoladamente.
+- Fazer commit da nova estrutura limpa.
+- Iniciar implementação de main.py.
+- Integrar modelo throttle + steering.
