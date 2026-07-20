@@ -710,3 +710,46 @@ comando textual em percentagem (L:x R:y + newline)
 - Adquirir a segunda LiPo 5000, as loop keys XT90-S (fêmeas + machos para as chaves e uma sobresselente), o divisor de tensão e o multímetro.
 - Atualizar o esquema elétrico KiCad para a topologia de três circuitos.
 - Prosseguir o plano de software de 2026-07-17 (máquina de estados, logging, heading hold com fontes simuladas), agora com o estado armado/desarmado por casco lido pelo sense.
+
+  ### 2026-07-20
+
+#### Trabalho realizado
+- Reescrita do `serial_link.py`: de script de teste (comando fixo 10/10 em loop) para classe reutilizável `SerialLink`:
+  - nenhuma ação ao ser importado; nunca envia comandos por iniciativa própria;
+  - `connect()` devolve True/False em vez de lançar exceção com o ESP32 ausente;
+  - tratamento de exceções em escrita/leitura e STOP (0/0) garantido no fecho da porta;
+  - protocolo textual `L: x R: y\n` mantido intacto.
+- Teste do módulo com o ESP32 desligado: aviso limpo e saída sem traceback (cenário "ESP32 ausente sem crash" validado).
+- Commit e push da alteração; upstream da branch develop configurado no Raspberry Pi.
+- Correção da localização do `main.py`: movido de `software/` para `software/raspberry_pi/` com `git mv`.
+- Reescrita do `main.py` para integrar o `SerialLink`:
+  - abre a ligação série se o ESP32 existir e escuta telemetria;
+  - tentativa de religação automática a cada 10 s;
+  - mantém-se em DISARMED — nunca envia comandos de propulsão;
+  - STOP + fecho da porta garantidos ao sair (SIGINT/SIGTERM).
+- Teste do `main.py` sem ESP32: arranque limpo, tolerância à ausência da porta e encerramento seguro confirmados.
+- Primeira ligação física do ESP32 ao Raspberry Pi nesta fase: deteção em `/dev/ttyUSB0`.
+- Execução do `main.py` com o ESP32 ligado: ligação série ativa e encerramento limpo.
+- Validação da comunicação bidirecional com comando STOP (0/0):
+  - resposta do ESP32: `Left: 0% -> 1000 us | Right: 0% -> 1000 us`;
+  - failsafe do firmware confirmado em condições reais (`FAILSAFE ATIVO - motores parados` após comando isolado).
+
+#### Decisões técnicas
+- O `serial_link.py` passa a ser um módulo passivo: quem decide o que enviar é o `main.py`; o único valor por defeito é o STOP.
+- O `main.py` permanece DISARMED nesta fase; a validação com hardware foi feita apenas com escuta e STOP, sem comandos de propulsão.
+- Testes realizados com o ESP32 alimentado exclusivamente por USB, sem potência aos motores.
+- Confirmada implicação de design para a fase seguinte: o modo ARMED terá de enviar comandos periódicos (heartbeat), caso contrário o failsafe do ESP32 corta os motores.
+
+#### Problemas / limitações
+- ESP32 inicialmente ligado à porta USB-C do Raspberry Pi (entrada de alimentação, não porta de dados) — sem deteção; resolvido ao mudar para uma porta USB-A.
+- O firmware do ESP32 não envia telemetria por iniciativa própria; responde apenas a comandos recebidos.
+- Porta série ainda fixa em `/dev/ttyUSB0`, sem udev rule (pendente de fase anterior).
+- Eco do terminal ao colar heredocs longos dificulta a confirmação visual; a validação passou a ser feita por execução (um ficheiro truncado daria `SyntaxError`).
+
+#### Resultado do dia
+- Cadeia de comunicação Raspberry Pi ↔ ESP32 validada ponta a ponta com o novo código modular.
+- Failsafe do ESP32 confirmado com hardware real, como segunda camada de segurança independente do Pi.
+- Dois commits publicados na branch develop: refactor do `serial_link.py` e integração no `main.py`.
+
+#### Próximo passo
+- Implementar a máquina de estados DISARMED/ARMED no `main.py`, com heartbeat periódico e transições explícitas e seguras entre estados.
