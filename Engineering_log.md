@@ -753,3 +753,46 @@ comando textual em percentagem (L:x R:y + newline)
 
 #### Próximo passo
 - Implementar a máquina de estados DISARMED/ARMED no `main.py`, com heartbeat periódico e transições explícitas e seguras entre estados.
+
+
+### 2026-07-21
+
+#### Trabalho realizado
+- Implementada máquina de estados mínima DISARMED ↔ ARMED no `main.py`, com controlo por teclado em bancada (a=ARM, d=DISARM, s=STOP, q=sair).
+- Adicionado heartbeat a 5 Hz no estado ARMED (comando 0/0), para manter o failsafe do ESP32 satisfeito sem mover os motores.
+- Garantido arranque sempre em DISARMED; rejeição de ARM sem ligação série; STOP com prioridade absoluta; regresso/perda da ligação série nunca arma sozinho.
+- Criado o módulo de logging `telemetry/logger.py` (classe `SessionLogger`): um ficheiro `session_<timestamp>.csv` por arranque, colunas `timestamp, event, state, detail`, escrita com flush imediato.
+- Adicionado `logs/` ao `.gitignore` (dados de execução, não versionados).
+- Integrado o `SessionLogger` no `main.py`: registo de BOOT, SERIAL, STATE, TX, RX, STOP, WARN e SHUTDOWN.
+- Validação com hardware real (ESP32 por USB, sem potência aos motores): máquina de estados e logging testados ponta a ponta.
+- Três commits publicados na branch `develop` (`9e9ede9`, `b04e118`, `20797b8`).
+
+#### Decisões técnicas
+- Heartbeat fixado em 5 Hz (200 ms), com folga larga sobre o timeout do failsafe do ESP32.
+- No estado ARMED, o heartbeat envia 0/0 por agora, por ainda não existir fonte de propulsão; o objetivo desta fase foi validar o mecanismo, não mover motores.
+- Logging definido com esquema genérico (`event`/`state`/`detail`) para acomodar futuros campos de heading, GPS e waypoints sem quebrar o formato.
+- Logs mantidos dentro do projeto (`software/raspberry_pi/logs/`), fora do controlo de versões.
+- Adotar daqui em diante o fluxo editar-no-PC → `git push` → `git pull` no Pi, abandonando a edição direta no Pi.
+
+#### Problemas / limitações
+- O terminal/SSH do Pi corrompeu repetidamente colagens de várias linhas (perda e substituição de caracteres), impedindo colar ficheiros via heredoc. Contornado com transferência em base64 partida em pedaços pequenos e verificada por hash — solução funcional mas lenta, a eliminar com o fluxo Git.
+- O parser não-bloqueante ocasionalmente lê meia linha por ciclo, partindo mensagens do ESP32 em dois registos (ex.: `Right: 0%` e `-> 1000 us` separados); conteúdo correto, apresentação por limpar.
+- Surge um `COMANDO INVALIDO` inicial (lixo no buffer quando a porta abre e o ESP32 reinicia); inofensivo, motores parados.
+- Heartbeat a 0/0 apenas; sem controlo de propulsão real até existir loop key e cadeia de potência protegida.
+
+#### Resultado do dia
+- Máquina de estados DISARMED/ARMED operacional e validada com hardware, com as duas camadas de segurança (heartbeat + failsafe do ESP32) confirmadas a trabalhar em conjunto.
+- Sistema de logging por sessão funcional, com timestamps ao milissegundo.
+- Timeout do failsafe do ESP32 medido a partir dos logs: ≈ 1,1 s após o último comando — margem confortável face aos 200 ms do heartbeat.
+- Cadência do heartbeat confirmada nos dados (~204 ms entre envios).
+
+#### Lições aprendidas
+- O logging paga-se sozinho: permitiu medir o timeout do failsafe e a cadência do heartbeat sem instrumentação extra.
+- Uma máquina de estados só é segura se o estado seguro for o de arranque e se nenhum evento (perda/regresso de ligação) provocar movimento automático.
+- Colar código via terminal não é fluxo de trabalho; a fonte de verdade em Git com `git pull` no destino evita corrupção e retrabalho.
+
+#### Próximo passo
+- Migrar o fluxo de desenvolvimento para editar no PC e sincronizar por `git pull` no Pi.
+- Limpar o parser das linhas partidas e filtrar o `COMANDO INVALIDO` do arranque.
+- Iniciar o heading hold com fontes de heading e posição simuladas (controlador proporcional), conforme o plano de 2026-07-17.
+- Adiar a energização dos ESCs até à chegada da loop key e da cadeia de potência protegida por fusíveis.
