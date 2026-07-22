@@ -25,6 +25,7 @@ class SerialLink:
         self.port = port
         self.baud = baud
         self.ser = None
+        self._buf = b""  # bytes recebidos ainda sem newline
 
     @property
     def is_open(self):
@@ -35,6 +36,8 @@ class SerialLink:
         try:
             self.ser = serial.Serial(self.port, self.baud, timeout=0)
             time.sleep(2)  # o ESP32 reinicia quando a porta abre
+            self.ser.reset_input_buffer()  # descarta lixo de arranque do ESP32
+            self._buf = b""
             return True
         except (serial.SerialException, OSError) as e:
             print(f"[WARN] ESP32 nao disponivel em {self.port}: {e}")
@@ -57,16 +60,25 @@ class SerialLink:
         return self.send_motors(0, 0)
 
     def read_line(self):
-        """Devolve uma linha recebida do ESP32, ou None."""
+        """Devolve uma linha completa do ESP32, ou None.
+
+        Acumula os bytes recebidos num buffer interno e so devolve
+        texto quando o newline chega, evitando linhas partidas quando
+        a mensagem chega em varios pedacos.
+        """
         if not self.is_open:
             return None
         try:
-            if self.ser.in_waiting:
-                line = self.ser.readline().decode("utf-8", errors="ignore").strip()
-                return line or None
+            n = self.ser.in_waiting
+            if n:
+                self._buf += self.ser.read(n)
         except (serial.SerialException, OSError):
             self.close()
-        return None
+            return None
+        if b"\n" not in self._buf:
+            return None
+        raw, self._buf = self._buf.split(b"\n", 1)
+        return raw.decode("utf-8", errors="ignore").strip() or None
 
     def close(self):
         """Envia STOP (se possivel) e fecha a porta."""
