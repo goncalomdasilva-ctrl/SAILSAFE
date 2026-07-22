@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """SAILSAFE - processo principal do Raspberry Pi.
 
-Maquina de estados minima: DISARMED <-> ARMED.
+Maquina de estados: DISARMED <-> ARMED / NAV.
 - Arranca sempre em DISARMED (seguro).
 - DISARMED: nunca envia propulsao; motores parados pelo failsafe do ESP32.
-- ARMED: envia heartbeat a 5 Hz (0/0 por agora) para manter o failsafe
-  do ESP32 satisfeito, sem mover os motores.
+- ARMED: envia heartbeat a 5 Hz (0/0) para manter o failsafe satisfeito.
+- NAV: heading hold. Le o rumo (fonte SINTETICA, sem BNO055 nem motores),
+  calcula o steer, mistura com o throttle e envia comandos L/R (<=30%) ao
+  ESP32, fechando a malha pelo simulador. Trocar a fonte pelo BNO055 real
+  nao altera a logica de controlo.
 - STOP tem prioridade absoluta e forca DISARMED.
-- O regresso da ligacao serie nunca arma sozinho: exige 'a' explicito.
+- O regresso da ligacao serie nunca arma sozinho.
 
 Regista a sessao em CSV via telemetry.SessionLogger.
-Teclas (terminal): a=ARM  d=DISARM  s=STOP  q=sair
+Teclas (terminal): a=ARM  n=NAV  d=DISARM  s=STOP  q=sair
 """
 
 import signal
@@ -22,10 +25,16 @@ import time
 
 from communication.serial_link import SerialLink
 from telemetry.logger import SessionLogger
+from control.heading import HeadingController
+from control.mixer import mix
+from control.sources import SimulatedHeading
 
 HEARTBEAT_S = 0.2
 RECONNECT_S = 10
-DISARMED, ARMED = "DISARMED", "ARMED"
+SAFE_MAX = 30        # teto que o ESP32 aceita (rejeita comandos > 30%)
+NAV_THROTTLE = 20    # impulso base em NAV, com margem para o steer
+NAV_TARGET = 90.0    # rumo alvo a manter, em graus
+DISARMED, ARMED, NAV = "DISARMED", "ARMED", "NAV"
 
 running = True
 
@@ -70,7 +79,7 @@ def main():
     state = DISARMED
     log.log("BOOT", state, "")
     print(f"[STATE] {state}", flush=True)
-    print("[INFO] Teclas: a=ARM  d=DISARM  s=STOP  q=sair", flush=True)
+    print("[INFO] Teclas: a=ARM  n=NAV  d=DISARM  s=STOP  q=sair", flush=True)
 
     link = SerialLink()
     if link.connect():
@@ -82,6 +91,11 @@ def main():
 
     last_hb = 0.0
     last_reconnect = time.monotonic()
+
+    # Controlo de rumo. Fonte de heading SINTETICA (sem BNO055 nem motores):
+    # em NAV os comandos enviados realimentam o simulador para fechar a malha.
+    ctrl = HeadingController(kp=2.0, max_steer=100.0)
+    sim_heading = SimulatedHeading(heading=0.0, yaw_gain=0.5)
 
     with KeyReader() as keys:
         try:
@@ -107,6 +121,15 @@ def main():
                         else:
                             print("[WARN] Nao e possivel ARM sem ligacao serie", flush=True)
                             log.log("WARN", state, "arm sem serie")
+                elif k == "n":
+                    if state == DISARMED and link.is_open:
+                        state = NAV
+                        ctrl.set_target(NAV_TARGET)
+                        last_hb = 0.0
+                        log.log("STATE", state, f"alvo={NAV_TARGET:.0f}")
+                        print(f"[STATE] {state} (heading hold, alvo {NAV_TARGET:.0f} deg)", flush=True)
+                    elif not link.is_open:
+                        print("[WARN] Nao e possivel NAV sem ligacao serie", flush=True)
                 elif k == "d":
                     if state != DISARMED:
                         state = DISARMED
@@ -120,7 +143,7 @@ def main():
                         print("[INFO] ESP32 ligado (continua DISARMED)", flush=True)
                         log.log("SERIAL", state, "reconectado")
 
-                if state == ARMED and not link.is_open:
+                if state in (ARMED, NAV) and not link.is_open:
                     state = DISARMED
                     log.log("STATE", state, "perda serie")
                     print("[WARN] Ligacao serie perdida -> DISARMED", flush=True)
@@ -130,6 +153,17 @@ def main():
                     last_hb = now
                     link.send_motors(0, 0)
                     log.log("TX", state, "0,0")
+                elif state == NAV and now - last_hb >= HEARTBEAT_S:
+                    last_hb = now
+                    heading = sim_heading.read()
+                    steer = ctrl.update(heading)
+                    left, right = mix(NAV_THROTTLE, steer, 0, SAFE_MAX)
+                    link.send_motors(left, right)
+                    # fecha a malha: os comandos rodam o barco simulado (sintetico)
+                    sim_heading.update(left, right, dt=HEARTBEAT_S)
+                    log.log("TX", state, f"{left:.0f},{right:.0f}")
+                    log.log("HEADING", state, f"{heading:.1f}")
+                    print(f"[NAV] heading={heading:5.1f}  L={left:.0f} R={right:.0f}", flush=True)
 
                 if link.is_open:
                     line = link.read_line()
