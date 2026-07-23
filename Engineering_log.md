@@ -6,29 +6,29 @@ Uma das tentativas iniciais incluiu o desenho de uma PCB para integração elét
 
 Após várias iterações, foi definida uma arquitetura inicial suficientemente sólida para avançar para a fase de execução e validação experimental.
 
-## 2026-07-05
+### 2026-07-05
 
-### Trabalho realizado
+#### Trabalho realizado
 
 * Preparação inicial do código do ESP32 antes da chegada dos ESCs e do Raspberry Pi.
 * Criação do esquema elétrico v1.
 
-### Problemas / limitações
+#### Problemas / limitações
 
 * Curva de aprendizagem inicial do KiCad, com algum tempo necessário para compreender a ferramenta e estruturar corretamente o esquema.
 
-### Resultado do dia
+#### Resultado do dia
 
 * Base inicial de firmware preparada.
 * Primeira versão do esquema elétrico concluída.
 
-### Próximo passo
+#### Próximo passo
 
 * Refinar a arquitetura elétrica e continuar a consolidação da documentação principal.
 
-## 2026-07-06
+### 2026-07-06
 
-### Trabalho realizado
+#### Trabalho realizado
 
 * Firmware inicial do ESP32 preparado.
 * Esquema elétrico v1 fechado.
@@ -43,61 +43,61 @@ Após várias iterações, foi definida uma arquitetura inicial suficientemente 
 * Instaladas ferramentas base de desenvolvimento: Python 3, pip, venv, git, i2c-tools, screen e minicom.
 * Criada a estrutura inicial de pastas do projeto no Raspberry Pi.
 
-### Decisões técnicas
+#### Decisões técnicas
 
 * O kill-switch físico/remoto foi identificado como requisito futuro, mas adiado por motivos de orçamento.
 * Foi decidido não ligar ainda ESCs, motores ou baterias de potência antes da validação da comunicação Raspberry Pi → ESP32.
 
-### Problemas / limitações
+#### Problemas / limitações
 
 * O KiCad não incluía vários módulos específicos necessários para o projeto, obrigando ao uso de conectores genéricos no esquema.
 * O esquema elétrico ainda requer melhorias de representação, embora os pontos principais de arquitetura estejam definidos.
 * A preparação inicial do Raspberry Pi exigiu adaptação de hardware disponível para configurar o microSD.
 
-### Resultado do dia
+#### Resultado do dia
 
 * O projeto ficou num estado técnico muito mais sólido em termos de arquitetura, documentação e preparação para testes de bancada.
 * O Raspberry Pi ficou operacional e preparado para integração futura com sensores e comunicação com o ESP32.
 * O projeto encontra-se a aguardar a chegada dos componentes para iniciar testes físicos.
 
-### Próximo passo
+#### Próximo passo
 
 * Testar comunicação Raspberry Pi → ESP32 por USB.
 
-## 2026-07-07
+### 2026-07-07
 
-### Trabalho realizado
+#### Trabalho realizado
 
 * Iniciada a criação do repositório GitHub do projeto SAILSAFE.
 * Definida a estrutura inicial para documentação pública do projeto.
 * Preparado o conteúdo inicial do README e da organização de ficheiros.
 * Estruturados assistentes de IA para apoio à documentação, organização de tarefas e maior consistência na escrita técnica.
 
-### Decisões técnicas
+#### Decisões técnicas
 
 * Foi decidido começar com uma estrutura simples de repositório, suficientemente organizada para ser mantida sem fricção excessiva.
 * A documentação pública será construída de forma incremental, em vez de tentar formalizar tudo de uma só vez.
 
-### Problemas / limitações
+#### Problemas / limitações
 
 * Curva de aprendizagem inicial do GitHub e da lógica de repositórios.
 * Ainda sem integração total dos ficheiros técnicos no repositório.
 
-### Resultado do dia
+#### Resultado do dia
 
 * O projeto passou a ter uma base inicial para documentação pública e portefólio técnico.
 * Ficou definido um caminho mais claro para organizar arquitetura, software, hardware e registos de evolução.
 * Os assistentes de IA passaram a integrar o processo como ferramenta de apoio à produtividade e revisão técnica, sem substituir validação própria.
 
-### Próximo passo
+#### Próximo passo
 
 * Fazer upload da documentação principal, esquema elétrico, ficheiro 3D e código do ESP32 para o repositório.
 
 
 
-## 2026-07-08
+### 2026-07-08
 
-### Trabalho realizado
+#### Trabalho realizado
 
 * Validada comunicação Raspberry Pi 4 → ESP32 por USB (ligação detetada como /dev/ttyUSB0).
 * Confirmada interface USB-série CH341 no sistema.
@@ -110,7 +110,7 @@ percentagem → PWM (ex.: 10% → 1100 µs).
 * Criado script Python no Raspberry Pi para envio periódico de comandos (keep-alive).
 * Reestruturado parser UART do ESP32 para abordagem não bloqueante baseada em buffer + newline.
 
-### Problemas / limitações
+#### Problemas / limitações
 
 * Cabo USB inicial não suportava dados (sem deteção do ESP32).
 * Uso de screen causava envio inválido de comandos (carácter a carácter).
@@ -118,7 +118,7 @@ percentagem → PWM (ex.: 10% → 1100 µs).
 * Parser inicial (readStringUntil) introduzia risco de bloqueio.
 * Conflito de acesso à porta série ao usar simultaneamente screen e Python.
 
-### Decisões técnicas
+#### Decisões técnicas
 
 * Manter arquitetura:
 
@@ -129,13 +129,13 @@ comando textual em percentagem (L:x R:y + newline)
 * Limitar output inicial a 0–30% para segurança em bancada.
 * Usar keep-alive como mecanismo normal e failsafe como redundância.
 
-### Resultado do dia
+#### Resultado do dia
 
 * Cadeia de controlo RPi → ESP32 validada em bancada.
 * Protocolo básico de comando e segurança funcional.
 * Base sólida estabelecida para integração futura com ESCs e motores.
 
-### Próximo passo
+#### Próximo passo
 
 * Validar repetibilidade do keep-alive e comando STOP.
 * Evoluir comando para modelo throttle + steering.
@@ -284,9 +284,9 @@ comando textual em percentagem (L:x R:y + newline)
 * Testar o cabo micro-B (deteção de /dev/ttyUSB0) e correr keep-alive + failsafe integralmente em bateria.
 * Comprar multímetro e condensador cerâmico de 100 nF.
 
-#### 2026-07-14
+### 2026-07-14
 
-##### Trabalho realizado
+#### Trabalho realizado
 - Soldadura do condensador eletrolítico junto ao ponto de alimentação do Raspberry Pi 4.
 - Soldadura dos cabos de alimentação diretamente aos pinos de alimentação do Raspberry Pi:
   - +5 V nos pinos físicos 2 e 4;
@@ -300,7 +300,7 @@ comando textual em percentagem (L:x R:y + newline)
 - Regravação do Raspberry Pi OS através do Raspberry Pi Imager.
 - Nova configuração do Wi-Fi, hostname, utilizador e acesso por SSH.
 
-##### Decisões técnicas
+#### Decisões técnicas
 - Não alimentar simultaneamente o Raspberry Pi pela entrada USB-C e pelos pinos GPIO.
 - Validar inicialmente o Raspberry Pi sem o ESP32, sensores ou outros periféricos ligados.
 - Confirmar primeiro o funcionamento do Raspberry Pi através de uma fonte USB-C de confiança.
@@ -309,7 +309,7 @@ comando textual em percentagem (L:x R:y + newline)
 - Manter `vcgencmd get_throttled` como principal verificação interna da qualidade da alimentação.
 - Adotar `throttled=0x0` como critério inicial de aceitação da alimentação pelo circuito do barco.
 
-##### Problemas / limitações
+#### Problemas / limitações
 - Durante o primeiro ensaio existiu receio de danificar o Raspberry Pi devido à alimentação direta pelos pinos GPIO.
 - A alimentação foi interrompida antes de o sistema concluir o arranque e sem encerramento controlado.
 - Após a interrupção, ocorreu provável corrupção de ficheiros ou da configuração do Raspberry Pi OS no cartão microSD.
@@ -318,7 +318,7 @@ comando textual em percentagem (L:x R:y + newline)
 - A tentativa de ativar manualmente o SSH através da partição `bootfs` não resolveu imediatamente o problema.
 - Foi necessário regravar o cartão microSD para recuperar uma instalação limpa e eliminar a incerteza causada pela possível corrupção de ficheiros.
 
-##### Resultado do dia
+#### Resultado do dia
 - Não foram observados sinais imediatos de dano elétrico no Raspberry Pi, como fumo, cheiro a queimado, aquecimento rápido ou perda do LED vermelho de alimentação.
 - O cartão microSD não ficou fisicamente danificado: continuou a ser reconhecido pelo computador e a partição `bootfs` permaneceu acessível.
 - A falha de acesso foi associada a corrupção lógica ou perda da configuração do sistema, e não a uma avaria física confirmada.
@@ -327,7 +327,7 @@ comando textual em percentagem (L:x R:y + newline)
 - O Raspberry Pi voltou a ficar preparado para acesso remoto.
 - A alimentação através do circuito soldado ficou pendente de validação completa com o Raspberry Pi arrancado exclusivamente pela bateria e pelo conversor DC-DC.
 
-##### Lições aprendidas
+#### Lições aprendidas
 - O LED vermelho confirma a presença de alimentação, mas não garante, por si só, que a tensão esteja correta e estável.
 - O LED verde pode piscar intensamente durante o arranque e apenas ocasionalmente depois, sem que isso represente necessariamente uma falha.
 - Interromper a alimentação durante a atividade do cartão pode corromper o sistema de ficheiros sem danificar fisicamente o microSD.
@@ -336,7 +336,7 @@ comando textual em percentagem (L:x R:y + newline)
 - Deve existir um procedimento de encerramento seguro antes de desligar fisicamente a alimentação.
 - A validação visual dos LEDs deve ser complementada por verificações internas do sistema.
 
-##### Próximo passo
+#### Próximo passo
 - Confirmar o arranque e o acesso por SSH com alimentação USB-C.
 - Encerrar corretamente o Raspberry Pi com `sudo poweroff`.
 - Retirar completamente a alimentação USB-C.
@@ -711,7 +711,7 @@ comando textual em percentagem (L:x R:y + newline)
 - Atualizar o esquema elétrico KiCad para a topologia de três circuitos.
 - Prosseguir o plano de software de 2026-07-17 (máquina de estados, logging, heading hold com fontes simuladas), agora com o estado armado/desarmado por casco lido pelo sense.
 
-  ### 2026-07-20
+### 2026-07-20
 
 #### Trabalho realizado
 - Reescrita do `serial_link.py`: de script de teste (comando fixo 10/10 em loop) para classe reutilizável `SerialLink`:
@@ -796,3 +796,86 @@ comando textual em percentagem (L:x R:y + newline)
 - Limpar o parser das linhas partidas e filtrar o `COMANDO INVALIDO` do arranque.
 - Iniciar o heading hold com fontes de heading e posição simuladas (controlador proporcional), conforme o plano de 2026-07-17.
 - Adiar a energização dos ESCs até à chegada da loop key e da cadeia de potência protegida por fusíveis.
+
+
+### 2026-07-22
+
+#### Trabalho realizado
+- Adotado o fluxo de trabalho baseado em Git: clonado o repositório no PC (via HTTPS), passando o desenvolvimento a editar-no-PC -> commit/push -> git pull no Pi, eliminando a transferência de código por base64 no terminal.
+- Corrigido o parser série do lado do Pi: read_line passa a acumular bytes num buffer interno e só devolve linhas completas; connect faz reset_input_buffer para descartar o lixo de arranque do ESP32 (fim do COMANDO INVALIDO inicial).
+- Implementada a lógica de controlo de rumo em control/heading.py: normalize_angle (intervalo -180..+180), heading_error (evita o salto 359<->0) e HeadingController proporcional com saturação.
+- Implementado o mixer de propulsão em control/mixer.py: converte throttle + steer em comandos L/R, com saturação.
+- Criada a fonte de heading sintética em control/sources.py (SimulatedHeading) e um ciclo fechado de simulação controlador -> mixer -> barco.
+- Criados testes automáticos sem hardware (tests/test_heading.py, tests/test_mixer.py), incluindo o caso crítico do salto angular.
+- Integrado o modo NAV na máquina de estados do main.py: em NAV, o heading hold gera comandos L/R (limitados a 30%) enviados ao ESP32, com a malha fechada pelo simulador; regista heading e comandos no CSV.
+- Validação com hardware real na comunicação: NAV testado com o ESP32 ligado, com o rumo simulado a convergir de 0 para o alvo de 90 graus em ~7 s e os motores a estabilizarem em 20/20. O ESP32 aceitou todos os comandos.
+- Auditoria de segredos ao repositório e ao histórico (limpa: sem chaves, passwords, IPs ou emails privados); adicionada LICENSE (MIT) com aviso de segurança.
+- Fusão develop -> main; histórico reescrito para uniformizar o autor de todos os commits como Gonçalo Silva; push forçado e re-sincronização do Pi.
+- Implementada a navegação por waypoints em control/navigation.py (haversine_m, bearing_deg, WaypointNav) com SimulatedBoat (posição + rumo) em control/sources.py e tests/test_navigation.py; ciclo fechado simulado a percorrer dois waypoints (100 m Norte + 100 m Este) validado no PC e no Pi.
+
+#### Decisões técnicas
+- Manter o desenvolvimento do heading hold em simulação: sem motores a malha não se fecha fisicamente; a fonte de dados fica separada da lógica para trocar o simulado pelo BNO055 real sem alterar o controlador.
+- Reconciliar o teto de segurança: o Pi limita os comandos de NAV a 30%, alinhando com o PERCENT_MAX_SAFE imposto pelo ESP32.
+- Manter o controlador proporcional puro (sem I/D), conforme decidido a 2026-07-17.
+- Descartado o uso de um LLM para previsão de eficiência/consumo: é um problema de regressão numérica com estrutura física (modelo físico de energia + regressão sobre os logs + medição de corrente/tensão), não de linguagem.
+- Passar a trabalhar diretamente na branch main (projeto solo; a develop cumpriu o seu papel durante a reestruturação).
+
+#### Problemas / limitações
+- Falha de importação no Pi por módulos escritos mas não commitados antes de se construir por cima deles; lição: commitar cada peça antes de depender dela.
+- O ciclo fechado do NAV é sintético; a afinação real do controlador só será possível com motores e testes na água.
+- O BNO055 ainda não está integrado nem calibrado; waypoints pendentes de GPS real.
+
+#### Resultado do dia
+- Fluxo de desenvolvimento profissional estabelecido (Git como fonte de verdade).
+- MVP de navegação em simulação: heading hold + waypoints, integrado na máquina de estados e validado com comunicação real ao ESP32.
+- Repositório público em ordem: main como branch principal, LICENSE, autoria uniformizada.
+
+#### Lições aprendidas
+- Separar fontes de dados da lógica de controlo permite desenvolver navegação sem sensores/atuadores reais.
+- No fluxo Git, dependências têm de ser commitadas antes do código que as usa.
+- Escolher a ferramenta pelo problema: previsão física pede modelo físico e dados medidos, não um LLM.
+
+#### Próximo passo
+- Ligar o WaypointNav ao modo NAV do main.py (bearing do waypoint como alvo do heading hold).
+- Preparar a interface RealHeading para o BNO055 (teste de rodar à mão, sem motores).
+- Adiar a energização dos ESCs e motores até à chegada da loop key e da cadeia de potência protegida por fusíveis.
+
+
+### 2026-07-23
+
+#### Trabalho realizado
+- Revisão mecânica maior: produzido o blueprint em madeira v6.1 (5 folhas). Baterias alojadas dentro dos cascos (X=341, Y=+/-123, fundo z=45, ~6 mm acima da linha de água), eliminando a placa base e a caixa central de baterias. Caixa IP66 (204x155) pousada ao nível do convés (fundo z=152, topo z=252), com calços e ripas de retenção aparafusadas a T1/T2. Travessa T2 recolocada em X=485. Escotilhas 185x85 com reforço perimetral, junta de neopreno 3 mm, 6 insertos M4 de latão e parafusos de orelhas em nylon; compartimento não hermético com respiro (regra 18.4). Pele em contraplacado marítimo 3 mm; proa (X 0-200) laminada em fibra de vidro + epóxi; lista de materiais consolidada (folha 5).
+- Correção geométrica da v6 verificada em 3D: o túnel entre cascos (118 mm) é mais estreito do que a caixa IP66 (155 mm), impedindo a caixa de descer abaixo do convés.
+- Definidas as sequências de serviço das baterias (retirar chaves -> abrir escotilhas -> extração pela patilha -> carregar fora do barco) e de montagem (fechar tampas -> ligar eletrónica -> esperar neutro do ESP32 -> inserir chaves).
+- Pesquisa sobre o kill-switch remoto: avaliada e descartada a hipótese de usar uma antena DVB TW25.
+- Definição da arquitetura de logging e armazenamento de dados a bordo e em terra.
+- Enquadramento do projeto como campo de treino para a cadeira de Algoritmos e Estruturas de Dados (AED).
+- Análise de âmbito para futura câmara e sensores.
+
+#### Decisões técnicas
+- Kill-switch remoto: a antena DVB TW25 não serve (antena de receção de TV, banda UHF de broadcast; não transmite nem corta). A solução é um sistema RC de hobby (2,4 GHz) com failsafe do recetor a cortar a potência, ou um link LoRa com heartbeat; a antena tem de ser da banda do rádio escolhido. Mantém-se a loop key XT90 como corte manual temporário.
+- Logging a bordo: ficheiro sequencial (CSV ou registos binários de tamanho fixo) com flush regular, sobre um buffer circular em array estático - sem base de dados e sem malloc em ciclo de tempo real. SQLite fica reservado para análise em terra.
+- Confirmado que a navegação por waypoints é geometria + controlo (haversine, bearing, cross-track, PID de rumo), não algoritmos de grafos; pathfinding só entraria para zonas proibidas ou cobertura de área.
+- Usar o projeto como aplicação prática da AED: buffer circular para amostras a alta frequência, lista ligada para a lista de waypoints da missão, structs + ponteiros para os registos.
+- Câmara e sensores adiados para depois do núcleo. Se adicionada, a câmara grava a bordo e analisa-se em terra (sincronização vídeo-logs por timestamp; metadados em SQLite). Preferir geofencing por GPS à deteção de obstáculos por sensores.
+
+#### Problemas / limitações
+- PIR não funciona na água; ultrassons e ToF/laser comportam-se mal com ondas e reflexos; deteção de obstáculos em superfície é um problema difícil (câmara + visão), fora do âmbito atual.
+- Processamento de vídeo em tempo real no Pi é proibitivo em CPU e consumo.
+- Kill-switch remoto continua por resolver em hardware.
+
+#### Resultado do dia
+- Arquitetura mecânica consolidada na v6.1, com as baterias nos cascos e simplificação estrutural.
+- Estratégia de dados clara: sequencial + buffer circular a bordo, SQLite em terra.
+- Caminho do kill-switch remoto esclarecido (RC/LoRa, não antena de TV).
+
+#### Lições aprendidas
+- A estrutura de dados certa depende do padrão de acesso: array circular para fluxo contínuo, lista ligada para coleções pequenas e ordenadas editadas manualmente.
+- malloc em ciclo de tempo real evita-se por princípio.
+- Trabalho de bancada de alto valor sem ESCs nem motores: gravar dados reais do IMU/GPS e afinar o controlo contra dados gravados.
+
+#### Próximo passo
+- Ligar o WaypointNav ao modo NAV do main.py, fechando a navegação autónoma completa em simulação.
+- Implementar o buffer circular de logging como exercício de AED.
+- Definir o sistema de rádio para o kill-switch remoto (RC 2,4 GHz vs LoRa) e a cadeia de corte.
+- Manter a proibição de energizar ESCs/motores até existir corte físico dimensionado.
