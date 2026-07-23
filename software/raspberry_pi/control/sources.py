@@ -6,6 +6,8 @@ Quando o hardware chegar, estas classes sao substituidas por leitores
 reais com a mesma interface read().
 """
 
+import math
+
 from control.heading import normalize_angle
 
 
@@ -27,6 +29,37 @@ class SimulatedHeading:
 
     def read(self):
         return self.heading
+
+
+class SimulatedBoat:
+    """Barco SINTETICO com posicao (lat, lon) e rumo.
+
+    Roda conforme a diferenca de impulso (left-right) e avanca conforme a
+    media dos motores. Serve para fechar a malha de navegacao sem GPS, BNO055
+    nem motores. NAO representa medicoes reais.
+    """
+
+    def __init__(self, lat, lon, heading=0.0, yaw_gain=0.4, speed_ms=3.0):
+        self.lat = lat
+        self.lon = lon
+        self.heading = normalize_angle(heading)
+        self.yaw_gain = yaw_gain      # graus por (unidade de left-right) por segundo
+        self.speed_ms = speed_ms      # velocidade a 100% de impulso medio
+
+    def update(self, left, right, dt=1.0):
+        # rotacao: proporcional a diferenca dos motores
+        self.heading = normalize_angle(self.heading + self.yaw_gain * (left - right) * dt)
+        # avanco: proporcional a media dos motores, ao longo do rumo
+        thr = (left + right) / 2.0
+        dist = self.speed_ms * (thr / 100.0) * dt
+        d_north = dist * math.cos(math.radians(self.heading))
+        d_east = dist * math.sin(math.radians(self.heading))
+        self.lat += d_north / 111320.0
+        self.lon += d_east / (111320.0 * math.cos(math.radians(self.lat)))
+        return self.lat, self.lon, self.heading
+
+    def position(self):
+        return self.lat, self.lon
 
 
 if __name__ == "__main__":
