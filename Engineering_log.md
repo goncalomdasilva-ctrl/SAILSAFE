@@ -879,3 +879,21 @@ comando textual em percentagem (L:x R:y + newline)
 - Implementar o buffer circular de logging como exercício de AED.
 - Definir o sistema de rádio para o kill-switch remoto (RC 2,4 GHz vs LoRa) e a cadeia de corte.
 - Manter a proibição de energizar ESCs/motores até existir corte físico dimensionado.
+
+### 2026-07-24
+
+#### Trabalho realizado
+- Adicionado `hardware/mechanical/SAILSAFE_concept_v6_2.step`: o modelo v6 (exportação real do Fusion) com aberturas de acesso às baterias cortadas nos dois cascos, para extração vertical dos packs 5000.
+- Recorte por casco: janela retangular X 258.5-423.5, Y +/-90.5 a +/-155.5, do assento da bateria (z=45) através do convés (z=146). Deixa lábio de ~10 mm dentro da pegada da escotilha (185x85) para a tampa assentar; folga de 5 mm em X e ~8 mm em Y à volta do pack (155x48x35). Livre entre T1 e T2 (sem travessa por cima).
+- Verificado programaticamente (OpenCASCADE): 25 componentes preservados com nomes originais; apenas casco_direito e casco_esquerdo alterados (-50 cm3 cada); janela do convés confirmada aberta (0 cm3 de material residual). Restantes 23 corpos idênticos em volume e bounding box.
+
+#### Notas / limitações
+- O corte foi feito por operação booleana sobre a geometria exportada; o ficheiro foi reescrito pelo kernel OpenCASCADE (cabeçalho deixa de ser "Autodesk Translation Framework") e não traz histórico paramétrico. Para versão 100% limpa com timeline, replicar o recorte no Fusion com as cotas acima e reexportar STEP.
+- Mantido o `SAILSAFE_concept_v6_1.step` (esboço de caixas) no repo; substituição/remoção fica para decisão separada.
+
+#### Efeito no CG
+- As duas baterias 5000 (baixas, z 45-80, simétricas em Y, centradas em X~341) são as maiores massas removíveis. Retirá-las não induz adorno lateral (simetria) mas sobe o CG e desloca-o ligeiramente para a ré; reverificar trim com baterias fora.
+
+#### Próximo passo
+- Ligar o WaypointNav ao modo NAV do main.py (navegação autónoma completa em simulação).
+- Confirmar as cotas de acesso à bateria contra o blueprint v6.1 e, se necessário, replicar o recorte no Fusion para o modelo mestre.
