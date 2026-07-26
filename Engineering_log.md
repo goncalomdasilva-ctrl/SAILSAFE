@@ -897,3 +897,55 @@ comando textual em percentagem (L:x R:y + newline)
 #### Próximo passo
 - Ligar o WaypointNav ao modo NAV do main.py (navegação autónoma completa em simulação).
 - Confirmar as cotas de acesso à bateria contra o blueprint v6.1 e, se necessário, replicar o recorte no Fusion para o modelo mestre.
+
+### 2026-07-26
+
+#### Trabalho realizado
+- Revisão do sense de tensão do esquema elétrico v1.11, durante a passagem do esquema para KiCad.
+- Detetado erro de dimensionamento: com o divisor 10k/2k2 (k=0.180328) uma 3S carregada dá 2.272 V à entrada do ADS1015, acima do FSR por omissão de +-2.048 V. O limite de saturação referido à bateria é 11.36 V, ou seja toda a zona útil de descarga (12.6 -> 11.4 V) lia saturado. O sense mostraria a bateria sempre cheia até já ir a meio da descarga.
+- Correção adotada sem alterar hardware: configurar o PGA do ADS1015 para +-4.096 V (GAIN_ONE). Fundo de escala passa a 22.71 V de bateria, resolução 11.09 mV (3.70 mV/célula).
+- Especificação escrita em `hardware/electrical/SAILSAFE_sense_v1_11_1.md` (tabelas de conversão, análise de erro, filtro, plano de verificação).
+
+#### Decisões técnicas
+- Manter o divisor 10k/2k2 em vez de apertar para 10k/1k5: a resolução extra não se traduz em precisão real (o erro dominante são os resistores, não o ADC) e mantém margem para 4S — 16.8 V dá 3.03 V, dentro do FSR e do máximo absoluto de entrada (VDD+0.3 = 5.3 V).
+- Resistores de sense passam a ser especificados a 1 % metal film. A 5 % o erro seria +-1.07 V a 12.6 V, mais de um terço da janela útil de descarga.
+- Calibração de um ponto por canal em software (multímetro -> fator de escala em configuração), porque mesmo a 1 % o erro (+-0.21 V) é ~19x pior que a resolução do ADC.
+- Condensador de 1 uF em paralelo com o resistor inferior de cada divisor (fc = 88 Hz com Rsrc = 1.80 k), para rejeitar o ruído de comutação do ESC.
+- Reservados A2/A3 do ADS1015 para ISENSE_E / ISENSE_D (ACS758LCB-050U, Hall isolado, 60 mV/A). Sem corrente não há modelo de autonomia possível; os 4 canais ficam exatamente preenchidos.
+
+#### Problemas / limitações
+- Com os 4 canais ocupados não sobra entrada para monitorizar o próprio rail de 5 V. A saída do ACS758 é ratiométrica à sua alimentação e o ADS1015 mede contra referência interna, portanto oscilações do 5 V desviam a leitura de corrente. Compensação ratiométrica exigiria um segundo ADS1015 (endereço alternativo pelo pino ADDR).
+- Liga-se ao pendente dos servos no rail de 5 V: se os servos ficarem nesse rail, os picos de corrente deles passam a contaminar também a leitura de corrente.
+- Nada disto está verificado em hardware — o ADS1015 e os sensores ainda não existem na bancada.
+
+#### Próximo passo
+- Aplicar no KiCad: tolerância 1 % em R1..R4, condensadores de 1 uF nos dois divisores, nós ISENSE_E/ISENSE_D em A2/A3, e nota do PGA junto de U4.
+- Quando houver hardware: varrer 9->13 V com fonte de bancada, confirmar linearidade sem saturação a 11.4 V, e calibrar o fator de escala por canal.
+- Continua pendente: ligar o WaypointNav ao modo NAV do main.py.
+
+#### Trabalho realizado (continuacao, 07-26)
+- Fechada a navegacao autonoma em simulacao: o modo NAV do `main.py` deixa de manter um rumo fixo de 90 graus e passa a seguir o bearing do waypoint atual, dado pelo WaypointNav. Era o ponto 1 da lista de proximos passos e o ultimo item do MVP de software.
+- `main.py`: `SimulatedHeading` substituido por `SimulatedBoat` (o modo NAV precisa de posicao, nao so de rumo); acrescentada a missao de demonstracao (dois waypoints, 40 m a Norte e depois 40 m a Este) e o raio de chegada de 4 m; removida a constante NAV_TARGET.
+- Extraida a funcao `nav_step()`, um passo de navegacao sem qualquer I/O (posicao -> bearing -> heading hold -> mixer -> barco). Fica testavel sem serie nem GPS, ao contrario do ciclo principal, que exige ligacao ao ESP32 para sequer entrar em NAV.
+- Novo `tests/test_nav_mode.py` com 8 testes. Todos os 18 testes do projeto passam (heading 3, mixer 4, navigation 3, nav_mode 8).
+- Verificado o ciclo fechado a 5 Hz: missao concluida em 619 passos (~124 s), com viragem para o segundo waypoint a convergir em ~20 s.
+
+#### Decisoes tecnicas
+- Fim de missao vai a DISARMED com `stop_motors()` explicito, em vez de ficar em ARMED. Zera a propulsao de forma ativa e nao deixa o barco armado a espera; e coerente com o principio de estado seguro por omissao.
+- Ao entrar em NAV a missao e recriada do inicio, a partir da posicao atual do barco. Carregar em `n` reinicia sempre a missao, sem estado escondido de execucoes anteriores.
+- `nav_step()` devolve um namedtuple (left, right, bearing, dist, done, lat, lon) e a posicao devolvida e a do instante da decisao, nao a de depois do movimento, para o log registar aquilo sobre que o controlador decidiu.
+- Testes incluem invariantes de seguranca e nao so convergencia: comandos sempre em [0, 30] (sem marcha atras, abaixo do teto do ESP32), missao concluida nunca devolve propulsao residual, e coerencia entre NAV_THROTTLE, SAFE_MAX e o heartbeat face ao failsafe de ~1 s.
+
+#### Problemas / limitacoes
+- Um dos testes falhou a primeira por erro do proprio teste (nao registava a amostra de chegada ao ultimo waypoint, dando 4.1 m contra um raio de 4.0 m). Corrigido no teste; a navegacao estava certa.
+- O modo NAV continua a exigir ligacao serie aberta para arrancar, por isso o ciclo principal completo nao e testavel sem ESP32; so `nav_step()` e que e. E uma limitacao aceite, nao um defeito.
+- Tudo continua SINTETICO: sem GPS, sem BNO055, sem motores. O que esta validado e a logica de navegacao, nao o comportamento do barco na agua.
+
+#### Resultado do dia
+- MVP de software concluido dentro do prazo que o proprio log tinha fixado para 2026-07-26: maquina de estados, heading hold, navegacao por waypoints, logging e testes, tudo validado em simulacao com comunicacao real ao ESP32.
+- Corrigido em paralelo um erro de dimensionamento do sense que teria inutilizado a leitura de bateria.
+
+#### Proximo passo
+- Interface `RealHeading` para o BNO055 (teste de rodar a mao, sem motores), substituindo a fonte sintetica de rumo sem tocar no controlador.
+- Buffer circular de logging como exercicio de AED.
+- Aplicar no KiCad as alteracoes de sense da v1.11.1.

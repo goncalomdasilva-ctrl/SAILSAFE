@@ -5,10 +5,12 @@ Maquina de estados: DISARMED <-> ARMED / NAV.
 - Arranca sempre em DISARMED (seguro).
 - DISARMED: nunca envia propulsao; motores parados pelo failsafe do ESP32.
 - ARMED: envia heartbeat a 5 Hz (0/0) para manter o failsafe satisfeito.
-- NAV: heading hold. Le o rumo (fonte SINTETICA, sem BNO055 nem motores),
-  calcula o steer, mistura com o throttle e envia comandos L/R (<=30%) ao
-  ESP32, fechando a malha pelo simulador. Trocar a fonte pelo BNO055 real
-  nao altera a logica de controlo.
+- NAV: navegacao por waypoints. O WaypointNav da o bearing para o waypoint
+  atual, que passa a ser o alvo do heading hold (ja nao um rumo fixo). O
+  controlador calcula o steer, o mixer converte em L/R (<=30%) e o comando
+  segue para o ESP32, fechando a malha pelo barco SINTETICO (sem GPS, BNO055
+  nem motores). Trocar as fontes pelas reais nao altera a logica de controlo.
+- Fim de missao: para os motores e volta a DISARMED (estado seguro).
 - STOP tem prioridade absoluta e forca DISARMED.
 - O regresso da ligacao serie nunca arma sozinho.
 
@@ -22,19 +24,29 @@ import select
 import termios
 import tty
 import time
+from collections import namedtuple
 
 from communication.serial_link import SerialLink
 from telemetry.logger import SessionLogger
 from control.heading import HeadingController
 from control.mixer import mix
-from control.sources import SimulatedHeading
+from control.navigation import WaypointNav
+from control.sources import SimulatedBoat
 
 HEARTBEAT_S = 0.2
 RECONNECT_S = 10
 SAFE_MAX = 30        # teto que o ESP32 aceita (rejeita comandos > 30%)
 NAV_THROTTLE = 20    # impulso base em NAV, com margem para o steer
-NAV_TARGET = 90.0    # rumo alvo a manter, em graus
+ARRIVAL_RADIUS_M = 4.0
 DISARMED, ARMED, NAV = "DISARMED", "ARMED", "NAV"
+
+# Missao SINTETICA de demonstracao: 40 m a Norte, depois 40 m a Este.
+# Substituir por waypoints reais quando houver GPS.
+MISSION_START = (38.73600, -9.14000)
+MISSION_WAYPOINTS = [
+    (38.736359, -9.140000),   # ~40 m a Norte  (bearing 0)
+    (38.736359, -9.139539),   # ~40 m a Este   (bearing 90)
+]
 
 running = True
 
@@ -69,6 +81,33 @@ class KeyReader:
         return None
 
 
+NavStep = namedtuple("NavStep", "left right bearing dist done lat lon")
+
+
+def nav_step(nav, ctrl, boat, throttle=NAV_THROTTLE, cap=SAFE_MAX, dt=HEARTBEAT_S):
+    """Um passo de navegacao autonoma, sem qualquer I/O.
+
+    Le a posicao do barco, pede ao WaypointNav o bearing para o waypoint
+    atual e usa-o como alvo do heading hold; o controlador da o steer, o
+    mixer converte em comandos de motor limitados a [0, cap], e o resultado
+    realimenta o barco SINTETICO (fecha a malha).
+
+    Devolve um NavStep. Com a missao concluida devolve left=right=0 e
+    done=True, ou seja, sem propulsao.
+
+    Nao toca em serie nem em ficheiros, para poder ser testado sem hardware.
+    """
+    lat, lon = boat.position()
+    bearing, dist, done = nav.update(lat, lon)
+    if done:
+        return NavStep(0, 0, None, 0.0, True, lat, lon)
+    ctrl.set_target(bearing)                     # o alvo passa a vir do waypoint
+    steer = ctrl.update(boat.heading)            # rumo medido antes de atuar
+    left, right = mix(throttle, steer, 0, cap)
+    boat.update(left, right, dt=dt)              # SINTETICO: fecha a malha
+    return NavStep(left, right, bearing, dist, False, lat, lon)
+
+
 def main():
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
@@ -92,10 +131,13 @@ def main():
     last_hb = 0.0
     last_reconnect = time.monotonic()
 
-    # Controlo de rumo. Fonte de heading SINTETICA (sem BNO055 nem motores):
-    # em NAV os comandos enviados realimentam o simulador para fechar a malha.
+    # Navegacao. Posicao e rumo vem de um barco SINTETICO (sem GPS, BNO055
+    # nem motores): em NAV os comandos enviados realimentam-no, fechando a
+    # malha nav -> heading hold -> mixer -> barco -> posicao.
     ctrl = HeadingController(kp=2.0, max_steer=100.0)
-    sim_heading = SimulatedHeading(heading=0.0, yaw_gain=0.5)
+    boat = SimulatedBoat(MISSION_START[0], MISSION_START[1],
+                         heading=0.0, yaw_gain=0.4, speed_ms=3.0)
+    nav = WaypointNav(MISSION_WAYPOINTS, arrival_radius_m=ARRIVAL_RADIUS_M)
 
     with KeyReader() as keys:
         try:
@@ -124,10 +166,14 @@ def main():
                 elif k == "n":
                     if state == DISARMED and link.is_open:
                         state = NAV
-                        ctrl.set_target(NAV_TARGET)
+                        # missao recomecada do inicio, a partir da posicao atual
+                        nav = WaypointNav(MISSION_WAYPOINTS,
+                                          arrival_radius_m=ARRIVAL_RADIUS_M)
+                        ctrl.clear_target()
                         last_hb = 0.0
-                        log.log("STATE", state, f"alvo={NAV_TARGET:.0f}")
-                        print(f"[STATE] {state} (heading hold, alvo {NAV_TARGET:.0f} deg)", flush=True)
+                        log.log("STATE", state, f"missao {len(MISSION_WAYPOINTS)} wp")
+                        print(f"[STATE] {state} (navegacao por waypoints, "
+                              f"{len(MISSION_WAYPOINTS)} wp)", flush=True)
                     elif not link.is_open:
                         print("[WARN] Nao e possivel NAV sem ligacao serie", flush=True)
                 elif k == "d":
@@ -155,15 +201,24 @@ def main():
                     log.log("TX", state, "0,0")
                 elif state == NAV and now - last_hb >= HEARTBEAT_S:
                     last_hb = now
-                    heading = sim_heading.read()
-                    steer = ctrl.update(heading)
-                    left, right = mix(NAV_THROTTLE, steer, 0, SAFE_MAX)
-                    link.send_motors(left, right)
-                    # fecha a malha: os comandos rodam o barco simulado (sintetico)
-                    sim_heading.update(left, right, dt=HEARTBEAT_S)
-                    log.log("TX", state, f"{left:.0f},{right:.0f}")
-                    log.log("HEADING", state, f"{heading:.1f}")
-                    print(f"[NAV] heading={heading:5.1f}  L={left:.0f} R={right:.0f}", flush=True)
+                    step = nav_step(nav, ctrl, boat)
+                    if step.done:
+                        # missao cumprida: parar e regressar ao estado seguro
+                        link.stop_motors()
+                        state = DISARMED
+                        log.log("NAV", state, "missao concluida")
+                        print("[NAV] Missao concluida -> DISARMED", flush=True)
+                        print(f"[STATE] {state}", flush=True)
+                    else:
+                        link.send_motors(step.left, step.right)
+                        log.log("TX", state, f"{step.left:.0f},{step.right:.0f}")
+                        log.log("NAV", state,
+                                f"wp={nav.index} dist={step.dist:.1f} "
+                                f"bearing={step.bearing:.1f} heading={boat.heading:.1f} "
+                                f"lat={step.lat:.6f} lon={step.lon:.6f}")
+                        print(f"[NAV] wp={nav.index}  dist={step.dist:6.1f} m  "
+                              f"bearing={step.bearing:5.1f}  heading={boat.heading:5.1f}  "
+                              f"L={step.left:.0f} R={step.right:.0f}", flush=True)
 
                 if link.is_open:
                     line = link.read_line()
