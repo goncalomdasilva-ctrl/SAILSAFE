@@ -60,7 +60,7 @@ export class Journey {
 
   _init() {
     const r = this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas, antialias: true
+      canvas: this.canvas, antialias: true, alpha: true
     });
     r.setPixelRatio(Math.min(devicePixelRatio, LOWQ ? 1.5 : 2));
     r.toneMapping = THREE.ACESFilmicToneMapping;
@@ -79,7 +79,8 @@ export class Journey {
       const m = new THREE.Mesh(
         new THREE.SphereGeometry(60, 48, 32),
         new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide,
-          transparent: true, opacity: order === 0 ? 1 : 0, depthWrite: false }));
+          transparent: true, opacity: 0, depthWrite: false }));
+      m.visible = false;              // fundo é a fotografia fixa (.stagePhoto)
       m.renderOrder = -10 + order;
       sc.add(m);
       return m;
@@ -95,15 +96,16 @@ export class Journey {
 
     /* --- água local, fundida com o mar da panorâmica --- */
     const seg = LOWQ ? 56 : 110;
-    const geo = new THREE.PlaneGeometry(22, 22, seg, seg);
+    const geo = new THREE.PlaneGeometry(30, 30, seg, seg);
     geo.rotateX(-Math.PI / 2);
     this.wGeo = geo;
     this.wBase = Float32Array.from(geo.attributes.position.array);
     const am = document.createElement('canvas'); am.width = am.height = 256;
     const ax = am.getContext('2d');
     const rg = ax.createRadialGradient(128, 128, 8, 128, 128, 126);
-    rg.addColorStop(0, '#fff'); rg.addColorStop(.42, '#fff');
-    rg.addColorStop(.78, '#555'); rg.addColorStop(1, '#000');
+    rg.addColorStop(0, '#fff'); rg.addColorStop(.30, '#fff');
+    rg.addColorStop(.60, '#909090'); rg.addColorStop(.85, '#303030');
+    rg.addColorStop(1, '#000');
     ax.fillStyle = rg; ax.fillRect(0, 0, 256, 256);
     /* normal map de ondulação fina: duas cópias a correr a velocidades
        diferentes dão a quebra irregular que uma malha só não consegue */
@@ -125,7 +127,7 @@ export class Journey {
     this.nrm2.repeat.set(21, 21);
 
     this.water = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({
-      color: 0x2f97a4, roughness: 0.13, metalness: 0.0,
+      color: 0x4d9cb4, roughness: 0.13, metalness: 0.0,
       normalMap: this.nrm, normalScale: new THREE.Vector2(0.55, 0.55),
       clearcoat: 0.9, clearcoatRoughness: 0.10,
       clearcoatNormalMap: this.nrm2,
@@ -165,42 +167,77 @@ export class Journey {
       sc.add(m); return m;
     });
 
-    /* jato tipo torneira: um tubo de água opaco e vidrado que sai do bocal
-       e cai em arco balístico. Sem blending aditivo — água não brilha, tem
-       corpo. A curva é recalculada por frame com a gravidade real. */
-    const SEGJ = 26;
-    this.jets = [1, -1].map(() => {
-      const g = new THREE.CylinderGeometry(1, 1, 1, 12, SEGJ, true);
-      g.rotateX(Math.PI / 2);                       // eixo ao longo de Z local
-      const m = new THREE.Mesh(g, new THREE.MeshPhysicalMaterial({
-        color: 0xbfe6ee, roughness: 0.05, metalness: 0.0,
-        transmission: 0.5, thickness: 0.02, ior: 1.33,
-        clearcoat: 1.0, clearcoatRoughness: 0.04,
-        transparent: true, opacity: 0.85, side: THREE.DoubleSide,
-        envMapIntensity: 2.2, depthWrite: false
-      }));
-      m.frustumCulled = false;
-      this.scene.add(m);
-      return { mesh: m, geo: g, base: Float32Array.from(g.attributes.position.array) };
+    /* Repuxo de waterjet como na referência: água BRANCA e AREJADA.
+       Três camadas:
+       1. coluna de espuma — corrente de sprites froth ao longo da parábola,
+          densa à saída, a abrir e a desfazer-se;
+       2. campo de lavagem — tapete de espuma turbulenta na água atrás da popa;
+       3. salpicos — partículas que saltam da zona de impacto.               */
+
+    /* textura de espuma: aglomerados brancos irregulares com buracos */
+    const frothTex = (seed) => {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+      const g = cv.getContext('2d');
+      let rnd = seed;
+      const R = () => (rnd = (rnd * 16807) % 2147483647) / 2147483647;
+      for (let i = 0; i < 150; i++) {
+        const x = R() * 128, y = R() * 128, r0 = 2 + R() * 9;
+        const gr = g.createRadialGradient(x, y, 0.5, x, y, r0);
+        gr.addColorStop(0, `rgba(255,255,255,${0.5 + R() * 0.5})`);
+        gr.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = gr; g.beginPath(); g.arc(x, y, r0, 0, 6.283); g.fill();
+      }
+      g.globalCompositeOperation = 'destination-out';
+      for (let i = 0; i < 40; i++) {
+        const x = R() * 128, y = R() * 128, r0 = 1 + R() * 4;
+        g.fillStyle = `rgba(0,0,0,${0.3 + R() * 0.5})`;
+        g.beginPath(); g.arc(x, y, r0, 0, 6.283); g.fill();
+      }
+      /* apagar as bordas para o sprite não ter recorte quadrado */
+      const vg = g.createRadialGradient(64, 64, 34, 64, 64, 64);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,1)');
+      g.fillStyle = vg; g.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(cv);
+    };
+    const F1 = frothTex(1234), F2 = frothTex(9876);
+
+    /* 1 — coluna de espuma: cadeia de sprites por bocal */
+    const NCH = LOWQ ? 10 : 16;
+    this.chain = [];
+    [1, -1].forEach(side => {
+      const arr = [];
+      for (let i = 0; i < NCH; i++) {
+        const m = new THREE.Mesh(
+          new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({ map: (i % 2) ? F1 : F2,
+            transparent: true, depthWrite: false, opacity: 0.9 }));
+        m.frustumCulled = false;
+        this.scene.add(m); arr.push(m);
+      }
+      this.chain.push({ side, arr, seed: side * 7.3 });
     });
 
-    /* dobra o cilindro unitário ao longo da parábola do jato */
-    this._bendJet = (jet, x0, y0, z0, vx, vy, thr) => {
-      const pos = jet.geo.attributes.position.array, base = jet.base;
-      const r0 = 0.0065 * (0.6 + thr * 0.5);        // raio à saída do bocal
-      const T = 0.34;                               // tempo de voo representado
-      for (let i = 0; i < pos.length; i += 3) {
-        const t = (base[i + 2] + 0.5) * T;          // ao longo do tubo: 0..T
-        const rr = r0 * (1 + t * 2.6);              // alarga ao afastar-se
-        pos[i]     = x0 + vx * t + base[i] * rr;
-        pos[i + 1] = Math.max(WL - 0.004, y0 + vy * t - 4.9 * t * t) + base[i + 1] * rr;
-        pos[i + 2] = z0 + base[i] * 0;              // sem desvio lateral
-      }
-      jet.geo.attributes.position.needsUpdate = true;
-      jet.geo.computeVertexNormals();
+    /* 2 — campo de lavagem: dois planos de espuma a rolar na água */
+    const mkWash = (w, l, rep) => {
+      const t1 = frothTex(rep * 31 + 7);
+      t1.wrapS = t1.wrapT = THREE.RepeatWrapping;
+      t1.repeat.set(rep, rep * 3);
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, l, 1, 8),
+        new THREE.MeshBasicMaterial({ map: t1, transparent: true,
+          depthWrite: false, opacity: 0.8 }));
+      m.rotation.x = -Math.PI / 2;
+      m.frustumCulled = false;
+      this.scene.add(m);
+      return { m, t: t1 };
     };
+    this.wash  = mkWash(0.55, 2.6, 2);   // tapete principal atrás da popa
+    this.wash2 = mkWash(0.80, 1.2, 3);   // fervura larga logo à saída
 
-    this.N = LOWQ ? 110 : 260;
+    /* esteiras lineares antigas fora — o campo de lavagem substitui-as */
+    this.wakes.forEach(m => { m.visible = false; });
+
+    this.N = LOWQ ? 110 : 260;    this.N = LOWQ ? 110 : 260;
     this.sp = new Float32Array(this.N * 3);
     this.sv = new Float32Array(this.N * 3);
     this.sl = new Float32Array(this.N);
@@ -208,9 +245,8 @@ export class Journey {
     const pg = new THREE.BufferGeometry();
     pg.setAttribute('position', new THREE.BufferAttribute(this.sp, 3));
     this.spray = new THREE.Points(pg, new THREE.PointsMaterial({
-      map: rad('rgba(255,255,255,.98)', 'rgba(232,250,255,.42)', 'rgba(214,240,255,0)'),
-      size: 0.017, transparent: true, depthWrite: false, sizeAttenuation: true,
-      blending: THREE.AdditiveBlending
+      map: rad('rgba(255,255,255,1)', 'rgba(255,255,255,.6)', 'rgba(255,255,255,0)'),
+      size: 0.024, transparent: true, depthWrite: false, sizeAttenuation: true
     }));
     sc.add(this.spray);
 
@@ -345,7 +381,6 @@ export class Journey {
 
     /* crossfade das duas panorâmicas */
     const wantBeach = L(a.pano, b.pano);
-    this.sky[1].material.opacity += (wantBeach - this.sky[1].material.opacity) * 0.05;
     /* ao mudar de cenário a câmara afasta-se e volta, como um voo curto */
     const swoop = Math.sin(Math.min(1, Math.max(0, (this.ch + this.mix - 2.1))) * Math.PI) * 0.9;
 
@@ -356,8 +391,12 @@ export class Journey {
 
     /* água */
     const arr = this.wGeo.attributes.position.array, base = this.wBase;
-    for (let i = 0; i < arr.length; i += 3)
-      arr[i + 1] = this._wave(base[i] + this.phase, base[i + 2], this.t);
+    for (let i = 0; i < arr.length; i += 3) {
+      const d2 = base[i] * base[i] + base[i + 2] * base[i + 2];
+      const fall = Math.max(0, 1 - d2 / 30);
+      arr[i + 1] = fall > 0.01
+        ? this._wave(base[i] + this.phase, base[i + 2], this.t) * fall : 0;
+    }
     this.wGeo.attributes.position.needsUpdate = true;
     this.wGeo.computeVertexNormals();
     this.water.material.opacity = 1 - wantBeach * 0.25;
@@ -414,28 +453,54 @@ export class Journey {
         if (P[j + 1] < WL) { P[j + 1] = WL; V[j + 1] *= -.18; }
       }
       this.spray.geometry.attributes.position.needsUpdate = true;
-      this.spray.material.opacity = 0.10 + thr * 0.62;
-      this.spray.material.size = (LOWQ ? 0.014 : 0.017) * (0.55 + thr * 0.75);
+      this.spray.material.opacity = 0.25 + thr * 0.70;
+      this.spray.material.size = (LOWQ ? 0.020 : 0.024) * (0.6 + thr * 0.7);
 
-      /* jatos: parábola desde o bocal, espessura e alcance com a potência */
-      this.jets.forEach((jet, i) => {
-        const side = (i ? -0.117 : 0.117) + sway;
-        const vx = 0.9 + thr * 2.6;                 // velocidade de saída
-        const vyj = 0.05 + thr * 0.10;
-        this._bendJet(jet, bx + 0.409, WL + 0.004 + by, side, vx, vyj, thr);
-        jet.mesh.material.opacity = thr < 0.03 ? 0 : 0.55 + thr * 0.32;
-        jet.mesh.visible = thr > 0.02;
+      /* 1 — coluna de espuma ao longo da parábola de cada bocal */
+      const vx0 = 0.9 + thr * 2.8;
+      this.chain.forEach(ch => {
+        const z0 = ch.side * 0.117 + sway;
+        const n = ch.arr.length;
+        for (let i = 0; i < n; i++) {
+          const m = ch.arr[i];
+          const tt = (i / (n - 1)) * 0.34;                    // tempo ao longo do arco
+          const wob = Math.sin(this.t * 11 + i * 1.7 + ch.seed) * 0.006 * (i / n);
+          const px = bx + 0.409 + vx0 * tt;
+          const py = Math.max(WL - 0.002,
+                     WL + 0.004 + by + (0.06 + thr * 0.12) * tt - 4.9 * tt * tt) + wob;
+          m.position.set(px, py, z0 + wob * 1.6);
+          m.quaternion.copy(this.camera.quaternion);          // billboard
+          const grow = 0.05 + (i / n) * (0.16 + thr * 0.16);  // abre ao afastar-se
+          m.scale.set(grow * (1.15 + thr), grow, 1);
+          m.rotation.z += Math.sin(this.t * 5 + i) * 0.002;   // fervilhar
+          m.material.opacity = thr < 0.03 ? 0
+            : (0.92 - (i / n) * 0.55) * (0.35 + thr * 0.65);
+          m.visible = thr > 0.02;
+        }
       });
 
-      /* câmara: ângulo do capítulo      /* câmara: ângulo do capítulo + arrasto do utilizador, com inércia */
+      /* 2 — campo de lavagem: branco, a correr para trás, a morrer à distância */
+      const washOn = thr > 0.03;
+      [this.wash, this.wash2].forEach((w, k) => {
+        w.m.visible = washOn;
+        if (!washOn) return;
+        const L0 = k ? 0.6 + thr * 0.5 : 1.4 + thr * 1.8;
+        w.m.scale.set(0.7 + thr * 0.6, L0, 1);
+        w.m.position.set(bx + 0.42 + L0 * (k ? 0.25 : 0.48), WL + 0.0015 + by * 0.4, sway);
+        w.t.offset.y = (w.t.offset.y - vel * (k ? 0.14 : 0.08)) % 1;
+        w.t.offset.x = Math.sin(this.t * (k ? 2.1 : 1.3)) * 0.02;
+        w.m.material.opacity = (k ? 0.55 : 0.42) * (0.25 + thr * 0.75);
+      });
+
+      /* câmara: ângulo do capítulo      /* câmara: ângulo do capítulo      /* câmara: ângulo do capítulo + arrasto do utilizador, com inércia */
       /* inércia depois de largar; o ângulo fica onde o utilizador o deixou */
       this.userAz += this.velAz * dt; this.velAz *= 0.88;
       this.userEl += this.velEl * dt; this.velEl *= 0.88;
-      this.userEl = Math.max(-40, Math.min(78, this.userEl));
+      this.userEl = Math.max(-14, Math.min(30, this.userEl));
 
       const dist = (L(a.dist, b.dist) + swoop) * (this.zoom || 1) + (1 - e) * 2.4;
       const azd = L(a.az, b.az) + this.userAz;
-      const eld = Math.max(-16, Math.min(82, L(a.el, b.el) + this.userEl));
+      const eld = Math.max(-8, Math.min(34, L(a.el, b.el) + this.userEl));
       const fov = L(a.fov, b.fov);
       if (Math.abs(this.camera.fov - fov) > .01) {
         this.camera.fov = fov; this.camera.updateProjectionMatrix();
@@ -450,11 +515,8 @@ export class Journey {
 
       /* o céu acompanha o barco em posição e roda com a marcha: é a rotação
          do cenário que faz o movimento ler-se, não o deslocamento do barco */
-      this.skyYaw = (this.skyYaw || 0) + vel * dt * 0.085;
-      this.sky.forEach(s => {
-        s.position.set(this.camera.position.x, 0, this.camera.position.z);
-        s.rotation.y = SKY0 + this.skyYaw;
-      });
+      /* fundo em gradiente CSS: uniforme, sem paralaxe — nada a alinhar */
+
       this.water.position.set(bx, 0, 0);
     }
     this.renderer.render(this.scene, this.camera);

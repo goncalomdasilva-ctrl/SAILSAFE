@@ -29,10 +29,10 @@ const js = res.outputFiles[0].text;
 
 /* 2. recursos — a fotografia entra no CSS como data URI, para o ficheiro
    único não depender de nada externo */
+/* fundo é gradiente CSS; a panorâmica pequena alimenta só o envmap */
 const css = fs.readFileSync(A('assets/css/style.css'), 'utf8');
-/* as panorâmicas entram como data URI no HTML, não no CSS */
-const pano = ['pano_mar_sm', 'pano_areia_sm'].map(n =>
-  fs.readFileSync(A(`assets/img/${n}.jpg`)).toString('base64'));
+const envPano = fs.readFileSync(A('assets/img/pano_env.jpg')).toString('base64');
+const pano = [envPano, envPano];
 const glb = fs.readFileSync(A('assets/sailsafe.glb')).toString('base64');
 
 /* 3. HTML: remove importmap, folha externa e script de módulo.
