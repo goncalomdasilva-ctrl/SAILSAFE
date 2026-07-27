@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SAILSAFE — Plataforma autónoma de superfície</title>
+<meta name="description" content="SAILSAFE — catamarã autónomo elétrico de 800 mm com propulsão diferencial por waterjets e arquitetura de controlo distribuída. Projeto pessoal de engenharia.">
+<meta property="og:title" content="SAILSAFE — Autonomous surface platform">
+<meta property="og:description" content="800 mm electric catamaran, differential waterjet thrust, two-tier distributed control architecture.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/img/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="assets/css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23080A0C'/><rect x='9' y='9' width='14' height='14' rx='3' fill='%23FF7A2F'/></svg>">
+<!-- three.js servido localmente: o site não depende de nenhum CDN -->
+<script type="importmap">
+{ "imports": {
+  "three": "./assets/vendor/three/three.module.js",
+  "three/addons/": "./assets/vendor/three/addons/"
+}}
+</script>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="#top"><i></i>SAILSAFE <small>v6.3</small></a>
+    <button class="burger" id="burger" aria-label="Menu">☰</button>
+    <nav id="nav">
+      <a href="#model"    data-i18n="nav.model"></a>
+      <a href="#arch"     data-i18n="nav.arch"></a>
+      <a href="#sub"      data-i18n="nav.sub"></a>
+      <a href="#specs"    data-i18n="nav.specs"></a>
+      <a href="#safety"   data-i18n="nav.safety"></a>
+      <a href="#software" data-i18n="nav.software"></a>
+      <a href="#status"   data-i18n="nav.status"></a>
+    </nav>
+    <div class="lang">
+      <button data-lang="pt" class="on">PT</button>
+      <button data-lang="en">EN</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============ VIAGEM ============ -->
+<div class="stage" id="top">
+  <div class="stageSticky">
+    <canvas id="jCanvas"></canvas>
+    <div class="stageVeil"></div>
+    <div class="spots" id="spots"></div>
+
+    <div class="stageUI">
+      <div class="wrap">
+        <div class="beat b0 on">
+          <div class="kick" data-i18n="hero.kicker"></div>
+          <h1>SAILSAFE</h1>
+          <p data-i18n="hero.sub"></p>
+        </div>
+        <div class="beat b1"><div class="kick" data-i18n="b1.k"></div>
+          <h2 data-i18n="b1.t"></h2><p data-i18n="b1.b"></p></div>
+        <div class="beat b2"><div class="kick" data-i18n="b2.k"></div>
+          <h2 data-i18n="b2.t"></h2><p data-i18n="b2.b"></p></div>
+        <div class="beat b3"><div class="kick" data-i18n="b3.k"></div>
+          <h2 data-i18n="b3.t"></h2><p data-i18n="b3.b"></p></div>
+        <div class="beat b4"><div class="kick" data-i18n="b4.k"></div>
+          <h2 data-i18n="b4.t"></h2><p data-i18n="b4.b"></p></div>
+      </div>
+    </div>
+
+    <div class="spotCard" id="spotCard">
+      <button class="x" id="spotClose">&times;</button>
+      <h5 id="sName"></h5><div class="sub" id="sSub"></div>
+      <p id="sDesc"></p><ul id="sSpecs"></ul><div id="sBadge"></div>
+    </div>
+
+    <div class="stageDots" id="stageDots"></div>
+    <button class="jReset" id="jReset" data-i18n="j.reset"></button>
+    <div class="dragHint" data-i18n="j.drag"></div>
+    <div class="photoCredit" data-i18n="hero.photo"></div>
+  </div>
+</div>
+
+<!-- ============ MODELO ============ -->
+<section id="model" class="plain">
+  <div class="wrap">
+    <div class="eyebrow">01 — CAD</div>
+    <h2 data-i18n="v.title"></h2>
+    <p class="lead" data-i18n="v.lead"></p>
+
+    <div class="viewer">
+      <div class="vPanel">
+        <div class="vGroup">
+          <h4 data-i18n="v.subsystems"></h4>
+          <div id="subToggles"></div>
+        </div>
+        <div class="vGroup">
+          <h4 data-i18n="v.views"></h4>
+          <div class="vBtns" id="viewBtns">
+            <button data-view="iso"   class="on" data-i18n="v.iso"></button>
+            <button data-view="top"   data-i18n="v.top"></button>
+            <button data-view="side"  data-i18n="v.side"></button>
+            <button data-view="bow"   data-i18n="v.bow"></button>
+            <button data-view="stern" data-i18n="v.stern"></button>
+          </div>
+        </div>
+        <div class="vGroup">
+          <h4 data-i18n="v.display"></h4>
+          <div class="vBtns" style="flex-direction:column;align-items:stretch">
+            <button id="btnXray"    data-i18n="v.xray"></button>
+            <button id="btnWater"   data-i18n="v.waterline"></button>
+            <button id="btnSection" data-i18n="v.section"></button>
+            <button id="btnColor"   data-i18n="v.colormode"></button>
+            <button id="btnRotate"  data-i18n="v.autorotate"></button>
+            <button id="btnReset"   data-i18n="v.reset"></button>
+          </div>
+          <label style="display:block;margin-top:14px">
+            <span style="font-size:12px;color:var(--mut)" data-i18n="v.explode"></span>
+            <input type="range" class="slider" id="explode" min="0" max="100" value="0">
+          </label>
+        </div>
+        <p class="vFoot" data-i18n="v.hintbody"></p>
+      </div>
+
+      <div class="vStage">
+        <canvas id="viewCanvas"></canvas>
+        <div class="vLoad" id="vLoad" data-i18n="v.loading"></div>
+        <div class="vHint" id="vHint" data-i18n="v.hint"></div>
+        <div class="vInfo" id="vInfo">
+          <button class="x" id="infoClose">×</button>
+          <h5 id="iName"></h5>
+          <div class="sub" id="iSub"></div>
+          <p id="iDesc"></p>
+          <ul id="iSpecs"></ul>
+          <div id="iBadge" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ARQUITETURA ============ -->
+<section id="arch">
+  <div class="wrap">
+    <div class="eyebrow">02 — System</div>
+    <h2 data-i18n="a.title"></h2>
+    <p class="lead" data-i18n="a.lead"></p>
+
+    <div class="archWrap">
+      <div class="archScroll">
+      <svg viewBox="0 0 1000 470" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 z" fill="#98A0A8"/>
+          </marker>
+        </defs>
+        <g stroke="#98A0A8" stroke-width="1.4" marker-end="url(#ar)" fill="none">
+          <path d="M500,64 L500,104"/>
+          <path d="M500,178 L500,222"/>
+          <path d="M500,296 L500,336"/>
+          <path d="M430,352 L300,352 L300,378"/>
+          <path d="M570,352 L700,352 L700,378"/>
+          <path d="M300,428 L300,446"/><path d="M700,428 L700,446"/>
+          <path d="M232,141 L302,141"/>
+        </g>
+
+        <g>
+          <rect x="392" y="22" width="216" height="42" rx="7" fill="#F4F5F3" stroke="#CBCEC9"/>
+          <text x="500" y="48" text-anchor="middle" fill="#16191C" font-size="14" data-i18n-svg="a.op"></text>
+          <text x="516" y="90" text-anchor="middle" fill="#5A6169" font-size="11.5" font-family="ui-monospace,monospace" data-i18n-svg="a.oplink"></text>
+        </g>
+
+        <g>
+          <rect x="302" y="104" width="396" height="74" rx="9" fill="#FFFFFF" stroke="#15803D" stroke-width="1.4"/>
+          <text x="500" y="131" text-anchor="middle" fill="#16191C" font-size="17" font-weight="650" data-i18n-svg="a.pi"></text>
+          <text x="500" y="150" text-anchor="middle" fill="#15803D" font-size="11" font-family="ui-monospace,monospace" data-i18n-svg="a.pirole"></text>
+          <text x="500" y="168" text-anchor="middle" fill="#5A6169" font-size="11" data-i18n-svg="a.pitasks"></text>
+        </g>
+
+        <g>
+          <rect x="40" y="112" width="192" height="58" rx="8" fill="#F4F5F3" stroke="#7E22CE" stroke-width="1.2"/>
+          <text x="136" y="135" text-anchor="middle" fill="#16191C" font-size="13.5" data-i18n-svg="a.sensors"></text>
+          <text x="136" y="155" text-anchor="middle" fill="#5A6169" font-size="11" font-family="ui-monospace,monospace">GPS · BNO055 · ADS1015</text>
+        </g>
+
+        <text x="516" y="207" text-anchor="middle" fill="#C2410C" font-size="11.5" font-family="ui-monospace,monospace" data-i18n-svg="a.link"></text>
+
+        <g>
+          <rect x="302" y="222" width="396" height="74" rx="9" fill="#FFFFFF" stroke="#0369A1" stroke-width="1.4"/>
+          <text x="500" y="249" text-anchor="middle" fill="#16191C" font-size="17" font-weight="650" data-i18n-svg="a.esp"></text>
+          <text x="500" y="268" text-anchor="middle" fill="#0369A1" font-size="11" font-family="ui-monospace,monospace" data-i18n-svg="a.esprole"></text>
+          <text x="500" y="286" text-anchor="middle" fill="#5A6169" font-size="11" data-i18n-svg="a.esptasks"></text>
+        </g>
+
+        <text x="500" y="330" text-anchor="middle" fill="#5A6169" font-size="11" font-family="ui-monospace,monospace">PWM</text>
+
+        <g>
+          <rect x="216" y="378" width="168" height="50" rx="8" fill="#F4F5F3" stroke="#CBCEC9"/>
+          <text x="300" y="408" text-anchor="middle" fill="#16191C" font-size="13" data-i18n-svg="a.escL"></text>
+          <rect x="616" y="378" width="168" height="50" rx="8" fill="#F4F5F3" stroke="#CBCEC9"/>
+          <text x="700" y="408" text-anchor="middle" fill="#16191C" font-size="13" data-i18n-svg="a.escR"></text>
+        </g>
+        <g>
+          <rect x="216" y="446" width="168" height="20" rx="5" fill="#FFFFFF" stroke="#0369A1" stroke-width="1.1"/>
+          <text x="300" y="460" text-anchor="middle" fill="#0369A1" font-size="11" data-i18n-svg="a.wjL"></text>
+          <rect x="616" y="446" width="168" height="20" rx="5" fill="#FFFFFF" stroke="#0369A1" stroke-width="1.1"/>
+          <text x="700" y="460" text-anchor="middle" fill="#0369A1" font-size="11" data-i18n-svg="a.wjR"></text>
+        </g>
+      </svg>
+      </div>
+    </div>
+
+    <div class="note">
+      <h4 data-i18n="a.why"></h4>
+      <p data-i18n="a.whybody"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SUBSISTEMAS ============ -->
+<section id="sub">
+  <div class="wrap">
+    <div class="eyebrow">03 — Subsystems</div>
+    <h2 data-i18n="s.title"></h2>
+    <p class="lead" data-i18n="s.lead"></p>
+    <div class="cards" id="subCards"></div>
+  </div>
+</section>
+
+<!-- ============ ESPECIFICAÇÕES ============ -->
+<section id="specs">
+  <div class="wrap">
+    <div class="eyebrow">04 — Data</div>
+    <h2 data-i18n="sp.title"></h2>
+    <p class="lead" data-i18n="sp.lead"></p>
+    <div class="specTabs" id="specTabs"></div>
+    <table><tbody id="specBody"></tbody></table>
+    <p class="legend" data-i18n="st.legend"></p>
+  </div>
+</section>
+
+<!-- ============ SEGURANÇA ============ -->
+<section id="safety">
+  <div class="wrap">
+    <div class="eyebrow">05 — Safety</div>
+    <h2 data-i18n="sf.title"></h2>
+    <p class="lead" data-i18n="sf.lead"></p>
+    <div class="grid2" id="safetyGrid"></div>
+    <div class="note" style="border-left-color:var(--open)">
+      <h4><span class="badge b-open" data-i18n="st.open"></span>&nbsp; <span data-i18n="sf.open.t"></span></h4>
+      <p data-i18n="sf.open.b" style="margin-top:8px"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SOFTWARE ============ -->
+<section id="software">
+  <div class="wrap">
+    <div class="eyebrow">06 — Software</div>
+    <h2 data-i18n="sw.title"></h2>
+    <p class="lead" data-i18n="sw.lead"></p>
+    <div class="grid2" id="swGrid"></div>
+    <div style="margin-top:30px">
+      <h4 style="font-size:14px;margin-bottom:4px" data-i18n="sw.proto"></h4>
+      <div class="code">L:0 R:0<span class="c">      → stop / neutro</span>
+L:10 R:10<span class="c">    → ambos os lados a 10 %</span>
+L:12 R:8<span class="c">     → correção diferencial</span>
+
+motor_esquerdo = throttle_base <span class="c">-</span> correcao_direcao
+motor_direito&nbsp; = throttle_base <span class="c">+</span> correcao_direcao</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ESTADO ============ -->
+<section id="status">
+  <div class="wrap">
+    <div class="eyebrow">07 — Status</div>
+    <h2 data-i18n="stt.title"></h2>
+    <p class="lead" data-i18n="stt.lead"></p>
+    <div class="statusCols">
+      <div class="sCol" style="--c:var(--ok)">
+        <h3><span class="badge b-validated" data-i18n="st.validated"></span><span data-i18n="stt.done"></span></h3>
+        <ul><li data-i18n="stt.d1"></li><li data-i18n="stt.d2"></li><li data-i18n="stt.d3"></li>
+            <li data-i18n="stt.d4"></li><li data-i18n="stt.d5"></li><li data-i18n="stt.d6"></li></ul>
+      </div>
+      <div class="sCol" style="--c:var(--est)">
+        <h3><span class="badge b-estimated" data-i18n="st.estimated"></span><span data-i18n="stt.wip"></span></h3>
+        <ul><li data-i18n="stt.w1"></li><li data-i18n="stt.w2"></li>
+            <li data-i18n="stt.w3"></li><li data-i18n="stt.w4"></li></ul>
+      </div>
+      <div class="sCol" style="--c:var(--open)">
+        <h3><span class="badge b-open" data-i18n="st.open"></span><span data-i18n="stt.open"></span></h3>
+        <ul><li data-i18n="stt.o1"></li><li data-i18n="stt.o2"></li>
+            <li data-i18n="stt.o3"></li><li data-i18n="stt.o4"></li></ul>
+      </div>
+    </div>
+    <div class="note" style="border-left-color:var(--mut2)">
+      <h4 data-i18n="stt.scope.t"></h4>
+      <p data-i18n="stt.scope.b"></p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="fRow">
+      <div>
+        <div class="brand" style="margin-bottom:10px"><i></i>SAILSAFE <small>v6.3</small></div>
+        <p data-i18n="f.project"></p>
+      </div>
+      <div class="meta">
+        <div data-i18n="f.author"></div>
+        <div data-i18n="f.school"></div>
+        <div data-i18n="f.docs"></div>
+      </div>
+    </div>
+    <p class="fNote" data-i18n="f.note"></p>
+  </div>
+</footer>
+
+<script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
