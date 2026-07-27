@@ -1,3 +1,15 @@
 __pycache__/
 *.pyc
 logs/
+
+# Artefactos de build do site.
+# SAILSAFE.html e' o ficheiro unico gerado por website/build_standalone.mjs
+# (~4 MB, reescrito por inteiro a cada build). Para o abrir offline, gerar
+# localmente:  cd website && node build_standalone.mjs
+website/SAILSAFE.html
+
+# NOTA: website/assets/sailsafe.glb NAO entra aqui de proposito. Apesar de ser
+# gerado por website/build_model.py, o deploy para o GitHub Pages publica a
+# pasta website/ tal como esta no repositorio, sem passo de build, e o
+# assets/js/app.js carrega o .glb em tempo de execucao. Se for ignorado, o
+# site publicado fica sem modelo 3D.
