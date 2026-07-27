@@ -948,3 +948,105 @@ comando textual em percentagem (L:x R:y + newline)
 - Aplicar no KiCad as alterações de sense: tolerância 1 % em R1..R4, condensadores de 1 µF nos dois divisores, nós ISENSE_E/ISENSE_D em A2/A3, e nota do PGA junto de U4.
 - Exportar o STEP do Fusion para substituir o `SAILSAFE_concept_v6_1.step` (esboço de caixas) e decidir a sua remoção.
 - Kill-switch remoto (RC 2,4 GHz vs LoRa) e cadeia de corte — continua a ser o bloqueio para qualquer ensaio na água.
+
+### 2026-07-26
+
+#### Trabalho realizado
+- Modelo de conceito `SAILSAFE_concept_v6_3.step`: o v6_2 tinha só estrutura, baterias e waterjets. Acrescentados 16 sólidos com os componentes que faltavam — eletrónica dentro da caixa IP66, ESCs e motores nos cascos.
+- Dentro da caixa (interior útil X 254,5..453,5 · Y ±75 · Z 154,5..252): `raspberry_pi_4` (85×56×20, sobre espaçadores de 8 mm), `esp32_devkit` (55×28×13), `bno055_imu` (20×27×5) sobre `suporte_BNO055`, `gps_modulo` (25×25×8) sobre `suporte_GPS`, `conversor_DCDC_5V` (65×35×20), `distribuidor_fusiveis` (60×40×30), `sensor_corrente` (31×13×15) e `ads1015` (25×18×4).
+- Nos cascos: `esc_dir`/`esc_esq` (80×40×30) sob a longarina de ré, e `motor_dir`/`motor_esq` (cilindro Ø36×70) coaxiais com o waterjet, ligados por `veio_motor_*` (Ø5×20) até à admissão.
+- `bateria_pi_2200` redimensionada de 120×60×30 (valor inventado) para 105×35×25 (LiPo 3S 2200 mAh real) e movida para a antepara de vante, atravessada — no sítio antigo colidia com o Raspberry Pi.
+- Escrito `hardware/mechanical/tools/build_concept_v6_3.py`, que gera o v6_3 a partir do v6_2. Até agora os STEP do repositório não tinham gerador versionado; a partir daqui o modelo de layout é reproduzível.
+- Escritos `tools/verify_concept.py` (integridade referencial, colisões AABB, folgas, CG) e `tools/validate_occ.py` (BRepCheck_Analyzer sólido a sólido). Resultado: 0 referências mortas, 0 ids duplicados, 41/41 sólidos válidos, 0 colisões entre componentes.
+- Escrito `tools/make_layout_svg.py` e gerado `SAILSAFE_layout_v6_3.svg`: vista de cima e vista lateral com legenda numerada, para rever o arranjo sem abrir CAD.
+
+#### Decisões técnicas
+- Não gerar B-rep de raiz. Sem kernel CAD garantido (CadQuery/OCP não instala de forma fiável), o gerador clona a topologia de dois sólidos já válidos do próprio ficheiro — `calco_IP66_1` para caixas e `waterjet_dir` para cilindros — e aplica-lhes uma transformação afim por eixo. Como os moldes estão alinhados aos eixos, a transformação preserva a validade, desde que as *pcurves* sejam reescaladas com os fatores dos eixos locais de cada superfície (para o cilindro, u é ângulo e não escala; v é distância axial e escala).
+- GPS no topo e a vante, ~70 mm do Raspberry Pi. O Pi 4 é uma fonte conhecida de ruído perto de 1,5 GHz; encostar o módulo GPS ao Pi degrada a receção. O suporte tira-o também do plano dos cabos de potência.
+- BNO055 sobre coluna, ao centro em Y e a meio do comprimento, longe da eletrónica de potência. Como é magnetómetro, interessa afastá-lo dos condutores de corrente elevada e das baterias.
+- ESC a z 104..134, 2 mm abaixo da longarina de ré. A primeira tentativa (z 116..146, encostado ao convés) atravessava a longarina — apanhado pelo verificador de colisões, não a olho.
+- Componentes modelados como envelopes com folga, não como modelos de fabricante. O objetivo é decidir arranjo e confirmar que cabe, não desenhar suportes.
+- Manter as LiPo 4S 5000 mAh nos cascos (155×48×35 já era realista) em vez de as passar para a caixa: baixam o CG e libertam a caixa para a eletrónica.
+
+#### Problemas / limitações
+- CG estimado em X = 468 mm, ou seja 58 % do comprimento a contar da proa, com massa total ~11,6 kg. Está deslocado para ré: motores, waterjets, ESCs e transom insert somam ~2,5 kg concentrados no último quarto. Provoca trim de popa; a correção natural é passar as LiPo 5000 mAh para vante nos cascos, que é a massa maior e a mais fácil de mover.
+- O `caixa_IP66` do modelo é um tabuleiro aberto (paredes de 2,5 mm, sem tampa). As folgas verificadas são ao interior do tabuleiro; a altura livre real fica menor quando houver tampa e vedante.
+- A `cobertura_ESC_*` continua a ser um bloco maciço no modelo, por isso o ESC aparece "dentro" dela em corte. É limitação da representação, não do arranjo.
+- Sem cablagem, bucins, suportes de motor nem furação. O veio motor–waterjet é um cilindro reto: não há acoplamento nem chumaceira modelados, e é aí que o alinhamento real vai doer.
+- Todas as dimensões dos componentes que ainda não existem (ESC, motores, GPS) são valores típicos de catálogo. Quando as peças chegarem, medir e voltar a correr o gerador.
+
+#### Resultado do dia
+- O modelo de conceito passou a responder à pergunta que interessa antes de comprar: cabe tudo, e onde. Sobram ~68 mm à ré do Pi e ~45 mm à proa dentro da caixa, com o pior aperto em +X no distribuidor de fusíveis (5,5 mm).
+- Ficou uma cadeia reprodutível: gerar → verificar colisões e folgas → validar sólidos → desenhar. Um erro de arranjo (ESC contra a longarina) foi apanhado por script e não por inspeção visual.
+
+#### Lições aprendidas
+- Um modelo de layout com colisões verificadas por script vale mais do que um render bonito. As duas colisões deste dia não se viam na vista de cima.
+- Quando não há a ferramenta certa, clonar geometria já válida e transformá-la é mais seguro do que escrever B-rep à mão: herda-se a topologia correta e só há que acertar coordenadas.
+- Um valor "provisório" num modelo (a bateria de 120×60×30) sobrevive muito para lá do provisório e depois choca com o resto. Vale a pena pôr dimensões reais assim que se souberem.
+
+#### Próximo passo
+- Passar as LiPo 5000 mAh para vante nos cascos e voltar a correr o cálculo de CG, com objetivo de 45–50 % do comprimento.
+- Interface `RealHeading` para o BNO055 (teste de rodar à mão, sem motores).
+- Buffer circular de logging como exercício de AED.
+- Exportar o STEP do Fusion e decidir a remoção do `SAILSAFE_concept_v6_1.step`.
+- Kill-switch remoto (RC 2,4 GHz vs LoRa) e cadeia de corte — continua a bloquear qualquer ensaio na água.
+
+### 2026-07-26 (sessão 2 — apresentação e correções cruzadas)
+
+#### Trabalho realizado
+- Análise estruturada de todo o material do projeto (STEP v6_3, arquitetura v1.11, layout SVG), com assistência de IA, e relatório de Fase 0: confirmado vs. estimado vs. em falta, contradições entre documentos, e lista priorizada de melhorias visuais.
+- Primeira versão do site do projeto: visualizador 3D interativo (three.js) com o modelo reconstruído a partir do STEP, toggles por subsistema, ficha técnica por componente ao clicar, corte longitudinal, linha de água ao calado derivado e vista explodida. Conteúdo bilingue PT/EN. Versão de ficheiro único (`website/SAILSAFE.html`) que abre por duplo clique, e versão modular preparada para GitHub Pages.
+- Esquema elétrico v1.11 cruzado com o site e com a arquitetura: detetadas e corrigidas três divergências no conteúdo publicado.
+- Modelo `SAILSAFE_concept_v6_4.step` gerado com o motor de clonagem do `build_concept_v6_3.py`: 50 sólidos novos que decompõem os envelopes em geometria reconhecível — Raspberry Pi 4 (13 sólidos: GPIO, USB, RJ45, SoC), ESP32 (8), GPS (4), BNO055 (3), waterjet com admissão/grelha/estator/tubeira/bocal orientável (7 por lado) e servo do bocal (4 por lado). Duto do waterjet da v6_2 reescalado para X 735..793 para dar lugar ao detalhe a jusante.
+- `verify_concept.py` sobre o v6_4: primeira passagem acusou 19 colisões do detalhe contra o duto original; anatomia reorganizada até zero colisões. Envelope preservado (815×350×252). Uma colisão era real: o conector CSI contra a RAM do Pi — RAM deslocada em Y como na placa verdadeira.
+
+#### Decisões técnicas
+- O site marca cada valor com a proveniência (validado / estimado / derivado / em aberto), mantendo o estatuto que os números têm na documentação — nenhum valor de desempenho é apresentado como medição.
+- Divergências fechadas a favor do esquema elétrico, por ser o documento mais recente: bateria da eletrónica é 2S 2200 (não 3S); arquitetura de três circuitos independentes sem fusível principal de 100 A nem bus bars (40 A por casco + 10 A eletrónica, nenhum cabo de potência atravessa a ponte); manobra combina diferencial com bocal orientável por servo (SRV_E/SRV_D) — marcada "em aberto" porque o firmware ainda só tem os dois ESCs.
+- Componentes detalhados gerados a partir das cotas dos desenhos mecânicos públicos, não de CAD de terceiros — evita problemas de licença no repositório.
+
+#### Problemas / limitações
+- O `verify_concept.py` rebenta no cálculo de folgas com o v6_4 (procura os nomes antigos `raspberry_pi_4` etc., agora decompostos em `rpi4_*`); a verificação de colisões corre completa antes disso.
+- O firmware não tem saídas de servo; o esquema tem M3/M4. Divergência registada, por resolver no código.
+
+#### Resultado do dia
+- Projeto passou a ter apresentação: relatório de análise, site interativo e modelo com componentes reconhecíveis, tudo coerente com a documentação e com as divergências documentais identificadas e corrigidas.
+
+#### Lições aprendidas
+- Cruzar o esquema elétrico com o documento-mãe apanhou três divergências que nenhum dos documentos denunciava sozinho. A validação entre documentos vale tanto como a validação dentro de cada um.
+- O verificador de colisões voltou a pagar-se: 19 sobreposições na primeira passagem do detalhe, uma delas um erro real de posicionamento (CSI vs. RAM).
+
+#### Próximo passo
+- Adaptar o cálculo de folgas do `verify_concept.py` aos nomes decompostos do v6_4.
+- Acrescentar as saídas SRV_E/SRV_D ao firmware do ESP32 ou reverter o esquema, para eliminar a divergência.
+
+### 2026-07-27
+
+#### Trabalho realizado
+- Site reescrito como viagem imersiva: panorâmica equirectangular como céu esférico 360º em que a câmara roda de verdade, cinco capítulos guiados pelo scroll (navegação → jatos → casco → praia → interior), arrasto livre para olhar à volta e marcadores ancorados às peças 3D que abrem a ficha técnica de cada componente.
+- No capítulo do interior, a caixa IP66, escotilhas e coberturas desvanecem para expor a eletrónica — transição de cenário (mar → areia) por crossfade entre panorâmicas com movimento de câmara.
+- Pipeline HDR: escrito leitor de Radiance RGBE de raiz (o imageio colapsava para 8 bits) com tone mapping ACES e exposição automática pela mediana. Convertida uma HDRI CC0 de praia (Poly Haven, 4096×2048) e geradas duas cenas da mesma imagem — dia e fim de tarde (−2 EV, tom quente) — eliminando a panorâmica anterior de 1024 px e a foto com marca de água de origem desconhecida.
+- Jato dos waterjets refeito três vezes até ficar aceitável: partículas soltas → núcleo aditivo (parecia uma lanterna) → tubo de água opaco com transmissão/clearcoat/IOR 1,33, dobrado por frame ao longo de parábola balística, com salpicos a nascer no ponto de impacto na água.
+- Controlo do palco iterado com feedback de utilização: sensibilidade final ~3× a inicial, zoom por roda removido (roubava o scroll da página), câmara fica onde o utilizador a deixa, botão de repor vista.
+- Rotação base do céu calculada analiticamente (R = −az − 2πu, com a água da enseada a u≈0,475 → 2,705 rad) para o barco flutuar na água da fotografia e não sobre a areia.
+
+#### Decisões técnicas
+- Sem geração de imagens disponível, a qualidade do fundo fica limitada à resolução da fonte: 4096 nativos na versão GitHub Pages, 2560 embutidos no ficheiro único (3,9 MB). HDRI de 8/16K do Poly Haven ou panorâmica própria de telemóvel como caminho de melhoria.
+- Água sem blending aditivo em nenhum elemento — água reflete e transmite, não emite.
+
+#### Problemas / limitações
+- O jato ainda é uma aproximação (tubo + salpicos); não há simulação de fluido nem espuma de impacto persistente.
+- O ambiente de teste não tem WebGL: a validação visual continua a depender de abrir o ficheiro no browser real.
+
+#### Resultado do dia
+- Site com movimento legível (é o cenário que passa), fundo fotográfico ao nível da fonte, jatos com comportamento de água e controlo de câmara utilizável. Onze iterações de ficheiro único até à v11.
+
+#### Lições aprendidas
+- Movimento sem referência visual não se lê: o barco "andava" mas o fundo fixo anulava a perceção. Rodar o cenário resolveu o que aumentar a velocidade não resolvia.
+- Blending aditivo é para luz, não para água. O mesmo efeito com material físico (transmissão + clearcoat) muda a leitura por completo.
+- Em UX de scroll, qualquer elemento que capture a roda do rato compete com a navegação da página — interação de câmara deve ficar no arrasto.
+
+#### Próximo passo
+- Panorâmica própria (rio) para substituir a HDRI genérica; conversor pronto em `website/hdr2jpg.py`.
+- Publicar no GitHub Pages com as panorâmicas de 4096 externas.
+- Fase 2 do interior: cablagem gerada a partir da netlist do KiCad e transições de câmara por subsistema.
