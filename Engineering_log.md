@@ -1050,3 +1050,86 @@ comando textual em percentagem (L:x R:y + newline)
 - Panorâmica própria (rio) para substituir a HDRI genérica; conversor pronto em `website/hdr2jpg.py`.
 - Publicar no GitHub Pages com as panorâmicas de 4096 externas.
 - Fase 2 do interior: cablagem gerada a partir da netlist do KiCad e transições de câmara por subsistema.
+
+### 2026-07-27 (sessão 2 — wash dos jatos, fundo e preparação de publicação)
+
+#### Trabalho realizado
+- Wash dos waterjets refeito a partir de fotografia de referência de uma embarcação a jato real: em vez de "tubo de água", espuma branca arejada em três camadas — cadeia de sprites de espuma ao longo da parábola balística do jato, planos de wash junto à superfície com textura a rolar no sentido do escoamento, e partículas de salpico no ponto de impacto. Tudo com blending normal (regra mantida: água não emite luz).
+- Fundo fotográfico abandonado em definitivo. Duas tentativas de manter a foto fixa alinhada com a câmara 3D (deslocamento de `backgroundPosition` com o tilt; projeção do horizonte 3D sobre o da foto) falharam pela mesma razão de fundo: uma fotografia é um ponto de vista fixo e a câmara do palco é livre — qualquer rotação lê-se como "a água mexeu-se", não como "eu mexi-me".
+- Substituído por gradiente CSS uniforme, como na primeira versão do site. Sem paralaxe não há nada que traia o movimento da câmara. Após teste, o céu branco inicial foi suavizado para azul-cinza (#a9c3d6 → #b9c9cd) por encandear.
+- Mantida uma panorâmica pequena (92 kB) apenas como environment map, para os reflexos na água e no casco não morrerem com a saída da fotografia.
+- Criado workflow de deploy no GitHub Actions (`.github/workflows/deploy-site.yml`): publica a pasta `website/` no GitHub Pages e só dispara quando há alterações em `website/**`.
+- Rebuild final do ficheiro único `SAILSAFE.html` (1,72 MB) e sincronização de todos os ficheiros para o repositório.
+
+#### Decisões técnicas
+- Fundo neutro em gradiente em vez de fotografia: menos espetacular parado, mas coerente em movimento — o realismo percebido depende mais da consistência do que da resolução do fundo.
+- O environment map fica desacoplado do fundo visível: os reflexos continuam fotográficos com o céu em gradiente.
+
+#### Problemas / limitações
+- O wash continua a ser uma aproximação por sprites; sem simulação de fluido, a espuma não interage com a ondulação da água.
+- O site nunca foi renderizado num telemóvel real — media queries e LOWQ estão validados apenas por inspeção de código.
+
+#### Resultado do dia
+- Palco visualmente estável: jatos com aspeto de wash real, fundo que não compete com o movimento da câmara, repositório pronto para commit, push e ativação do GitHub Pages.
+
+#### Lições aprendidas
+- Fotografia de fundo fixa é incompatível com câmara livre; ou o fundo é 360º (panorâmica esférica) ou é neutro. Meio-termo não existe.
+- Vale a pena separar o papel visual de um asset (fundo) do papel de iluminação (envmap) — remover um não obriga a perder o outro.
+
+#### Próximo passo
+- `git add -A && git commit && git push`; ativar Pages (Settings → Pages → Source: GitHub Actions) e verificar o site publicado, sobretudo no telemóvel.
+
+### 2026-07-28
+
+(Sessão da noite de 28 para 29; os commits correspondentes ficam com data de 29.)
+
+#### Trabalho realizado
+- Fechada a arquitetura do kill-switch remoto, que estava em aberto desde a v1.10 (OPEN-008). Corte por relé na linha positiva de cada casco, a jusante do fusível e da loop key, comandado por um canal PWM de rádio que não atravessa o Raspberry Pi nem o ESP32.
+- Verificado no modelo v6_4 que a abertura de acesso às baterias sobreviveu às revisões v6_3/v6_4 (0 cm³ de material na janela do convés nos dois cascos) e que nada obstrui a extração vertical além da própria escotilha.
+- Medido em simulação o desequilíbrio de trabalho entre cascos em quatro missões: 0,0 % em linha reta, −1,6 % em ziguezague, +8,9 % na missão de demonstração e +13,6 % num quadrado com viragens todas do mesmo lado.
+- Calculada a autonomia comparada das baterias em função do tempo a andar, e reatribuídos os quatro canais do ADS1015.
+- Confirmada fisicamente a bateria da eletrónica como LiPo 3S 2200 mAh.
+- Corrigidos os três sítios do site publicado que indicavam 2S 2200 (`website/assets/js/data.js` ×2 e `i18n.js`).
+- Produzido `docs/SAILSAFE_Architecture_v1_12.docx` (nova secção 21, histórico e tabelas de decisões e BOM actualizados) e revista a especificação `hardware/electrical/SAILSAFE_sense_v1_11_1.md` para a revisão 2.
+- Levantada e orçamentada a lista de compras; escolhido o caminho de menor custo para o rádio.
+
+#### Decisões técnicas
+- O corte remoto atua no POSITIVO, nunca no negativo. O negativo de cada casco é a referência de massa e o seu único caminho até à massa da eletrónica é o fio preto da ficha servo do ESC; cortá-lo obrigaria a corrente de retorno a passar por um fio dimensionado para miliamperes.
+- Hierarquia de proteção fixada em fusível (40–50 A) < relé (60–70 A) < cabo (6 mm²). O fusível tem de ser o elo mais fraco por ser o único componente desenhado para falhar de forma controlada. Corrigido um erro de raciocínio a meio da sessão que ia dimensionar o fusível para 60–70 A, o que o tornaria incapaz de proteger o ESC de 40 A.
+- Bobinas dos relés alimentadas pela bateria do próprio casco, a montante dos contactos: alimentá-las pela bateria da eletrónica custaria ~35 % da autonomia desta (1,9 h → 1,3 h), contra 4–6 % por missão quando saem do casco.
+- Um módulo RC-switch por casco, não um partilhado: um só módulo obrigaria a corrente das bobinas a atravessar a ponte pela massa da eletrónica e criaria um ponto único de falha a comandar os dois cascos. Um único canal do recetor comanda ambos.
+- O caminho do kill não passa por software do projeto. O PWM do ESP32 é gerado pelo periférico LEDC, em hardware: se o firmware encravar sem reiniciar, o sinal mantém-se com o último valor e o failsafe de software nunca chega a correr.
+- Loop keys XT90-S mantidas e não substituídas pelo corte remoto. Respondem a perguntas diferentes: a chave garante que é seguro pôr as mãos junto aos jatos, o rádio garante que o barco pára à distância. Descartada a ideia de as accionar por cordel — o XT90 tem vários quilos de retenção e não é um cordão de emergência; a extração das baterias faz-se pela escotilha.
+- Corte apenas de um polo: cortar um já isola a bateria por completo, e cortar o segundo acrescentaria um contacto a mais para arcar ou corroer sem ganho de segurança.
+- Sense reatribuído a três tensões (dois cascos e eletrónica) e uma corrente. Um divisor custa cêntimos e um sensor de corrente custa euros, logo o recurso escasso é o canal e não o componente.
+- Divisores passam a 5k/1k, aproveitando resistores já disponíveis. Condensador de filtro sobe para 2,2 µF porque a impedância de fonte desceu de 1,80 kΩ para 833 Ω.
+- A bateria da eletrónica passa a gatilho de regresso, e não apenas a mostrador.
+
+#### Problemas / limitações
+- Com 5k/1k, o limite de saturação no FSR por omissão sobe para 12,29 V — ainda abaixo de uma 3S carregada. A troca de divisor não dispensa a configuração do PGA para ±4,096 V.
+- **Revertida a decisão de 07-26.** Nessa sessão a divergência sobre a bateria da eletrónica foi fechada a favor do esquema elétrico (2S 2200), por ser o documento mais recente. Estava errado: a bateria física é 3S 2200, e as secções 5.2 e 17.6 do documento de arquitetura, mais antigas, é que estavam certas. Critério corrigido para o futuro: perante documentos em conflito sobre uma peça física, verifica-se a peça e não a data do documento.
+- O esquema elétrico v1.11 indica 2S 2200 mAh para a eletrónica quando a bateria real é 3S 2200 mAh. As secções 5.2 e 17.6 do documento de arquitetura já indicavam 3S, portanto o erro está no esquema. Correção pendente no KiCad.
+- Continua sem sobrar canal para monitorizar o rail de 5 V, do qual a saída do ACS758 é ratiométrica.
+- O casco direito fica sem medição de corrente até haver segundo ADS1015.
+- Um jato obstruído no casco não instrumentado não é detetado diretamente; só indiretamente pela queda de tensão.
+- Não foi possível obter preços de forma automática na maioria das lojas (a Amazon e várias páginas devolvem vazio). Só o recetor ELRS ER6 foi confirmado, a 29,90 € numa loja europeia; o resto do orçamento assenta em ordens de grandeza.
+- Nada disto está verificado em hardware: continuam em falta ESCs, motores, GPS, relés e rádio.
+
+#### Resultado do dia
+- A última decisão estrutural em aberto desde a v1.10 ficou fechada, e com ela o caminho para ensaios na água sem corda deixa de estar bloqueado por indefinição de arquitetura — passa a estar bloqueado apenas por compras.
+- Identificada uma inversão de prioridades que estava errada desde o início: a bateria pequena, e não as de propulsão, é o recurso crítico do sistema.
+
+#### Lições aprendidas
+- Duas baterias não se comparam pela capacidade mas pelo relógio a que se gastam. Uma consome-se com o tempo, a outra com a distância, e por isso a mais pequena pode ser a que limita a missão.
+- Em cadeias de proteção, cada componente é dimensionado por um critério diferente e em sentidos opostos: o fusível pelo mínimo que protege, o relé e o cabo pelo máximo que suportam. Aplicar o mesmo número a todos anula a proteção.
+- Segurança encaminhada através de um sistema que pode falhar não é segurança. O corte de emergência tem de ser independente daquilo de que desconfia.
+- Peças que parecem alternativas podem responder a perguntas diferentes. A loop key e o corte remoto não competem: uma protege as mãos, a outra protege o barco à distância.
+- Documentos que se contradizem entre si custam mais a descobrir do que um erro isolado. Convém confrontar o esquema com o documento-mãe sempre que se toca num valor.
+
+#### Próximo passo
+- Confirmar na ficha do ESC escolhido o comportamento ao perder sinal (OPEN-010), porque determina se um corte ao nível do sinal seria sequer admissível.
+- Decidir o sistema de rádio (OPEN-011) e encomendar.
+- Corrigir o esquema elétrico no KiCad: 3S 2200 mAh, três divisores 5k/1k, condensadores de 2,2 µF, nota do PGA junto de U4.
+- Interface `RealHeading` para o BNO055, ainda por fazer.
+- Buffer circular de logging como exercício de AED.
+- Modo manual com comando de consola ligado ao Raspberry Pi, como forma de exercitar o código e pilotar em ensaios próximos sem depender do rádio.

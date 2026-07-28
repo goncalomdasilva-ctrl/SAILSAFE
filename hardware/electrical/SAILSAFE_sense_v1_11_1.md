@@ -1,150 +1,170 @@
-# Sense de tensão e corrente — correção v1.11.1
+# Sense de tensão e corrente — especificação
 
-Aplica-se a `SAILSAFE_electrical_v1_11` (U4 = ADS1015, R1..R4 = divisores de sense).
-Data: 2026-07-26.
+Aplica-se ao circuito da caixa IP66 (U4 = ADS1015) do esquema elétrico v1.11.
 
-## 1. Problema encontrado
+## Revisões
 
-Os divisores de sense são R=10k / 2k2, logo o rácio é:
+| rev | data | alterações |
+|---|---|---|
+| 1 | 2026-07-25 | Versão inicial. Detetada a saturação do ADS1015 com o divisor 10k/2k2. |
+| 2 | 2026-07-28 | Divisores passam a 5k/1k (resistores disponíveis). Canais reatribuídos: entra a tensão da bateria da eletrónica, sai a corrente do casco direito. Condensador de filtro passa a 2,2 µF. Bateria da eletrónica confirmada 3S 2200 mAh. |
 
-```
-k = 2200 / (10000 + 2200) = 0.180328
-```
+---
 
-Com uma LiPo 3S carregada (12.6 V) isso dá **2.272 V** à entrada do ADS1015.
+## 1. O problema original
 
-O ADS1015 arranca com FSR (full-scale range) por omissão de **±2.048 V**. O limite de
-saturação referido à bateria é:
+Os divisores de sense estavam especificados a 10k/2k2, com rácio 0,180328. Uma LiPo 3S carregada
+(12,6 V) dá **2,272 V** à entrada do ADS1015, acima do FSR por omissão de **±2,048 V**. O limite de
+saturação referido à bateria era 11,36 V — ou seja, **toda a zona útil de descarga lia saturado** e a
+bateria pareceria cheia até já ir a meio da descarga.
 
-```
-2.048 / 0.180328 = 11.36 V
-```
+Não é uma avaria que se manifeste: o circuito está eletricamente são e a leitura é sempre plausível.
+Só está errada.
 
-**Toda a zona útil da bateria satura.** Uma 3S vai de 12.6 V (cheia) a ~9.9 V (vazia, 3.3 V/célula);
-tudo acima de 11.36 V lê o mesmo valor máximo. Na prática a bateria parece estar sempre cheia
-até já ir a meio da descarga — exatamente o oposto do que o sense serve para fazer.
+## 2. Divisor adotado — 5k / 1k
 
-## 2. Correção adotada: manter o divisor, mudar o PGA
-
-Não é preciso mexer em hardware. Basta configurar o PGA do ADS1015 para **±4.096 V** (GAIN_ONE).
+Aproveitam-se resistores já disponíveis. Nenhuma compra necessária.
 
 | | valor |
 |---|---|
-| Divisor | 10k / 2k2 (**inalterado**) |
-| PGA / FSR | **±4.096 V** (não o default de ±2.048 V) |
-| Fundo de escala referido à bateria | 22.71 V |
-| LSB do ADC | 2.00 mV |
-| Resolução na bateria | 11.09 mV (3.70 mV por célula) |
+| Resistor superior (ao positivo) | 5 kΩ |
+| Resistor inferior (à massa) | 1 kΩ |
+| Rácio k | 0,16667 |
+| PGA / FSR | **±4,096 V** (GAIN_ONE) — **não** o default de ±2,048 V |
+| Fundo de escala referido à bateria | 24,6 V |
+| Resolução | 12,00 mV (4,00 mV por célula numa 3S) |
+| Impedância de fonte | 833 Ω |
+| Corrente permanente | 2,10 mA a 12,6 V |
 
 Tabela de conversão (3S):
 
-| V bateria | V no ADC | contas @FSR ±4.096 |
-|---:|---:|---:|
-| 12.60 (cheia) | 2.2721 | 1136 |
-| 12.00 | 2.1639 | 1082 |
-| 11.40 | 2.0557 | 1028 |
-| 11.10 (nominal) | 2.0016 | 1001 |
-| 10.50 | 1.8934 | 947 |
-|  9.90 (vazia) | 1.7852 | 893 |
+| V bateria | V no ADC |
+|---:|---:|
+| 12,60 (cheia) | 2,100 |
+| 11,10 (nominal) | 1,850 |
+|  9,90 (vazia) | 1,650 |
 
-### Porque não apertar o divisor
+### ⚠ A correção do PGA continua a ser obrigatória
 
-A alternativa seria 10k/1k5 (k=0.1304) com FSR ±2.048 V, que daria melhor resolução (7.7 mV/conta).
-Rejeitada porque:
+Com 5k/1k o limite de saturação no FSR por omissão sobe para **12,29 V** — que ainda é **inferior a uma
+3S carregada (12,6 V)**. Trocar o divisor não resolve o problema sozinho.
 
-- 11 mV de resolução já é ~19x melhor do que o erro dominante (tolerância dos resistores, ver §3),
-  logo a resolução extra não se traduz em precisão real;
-- obriga a mexer no BOM;
-- perde a margem para 4S. Com 10k/2k2, uma 4S carregada (16.8 V) dá 3.03 V — dentro do FSR de
-  4.096 V e bem abaixo do máximo absoluto de entrada (VDD+0.3 = 5.3 V). Se um dia subires para 4S,
-  **não é preciso tocar no hardware**.
+**O PGA tem de ser configurado para ±4,096 V (GAIN_ONE) no código.** Sem isso, o topo da carga continua
+a ler saturado.
 
-## 3. O que domina o erro: os resistores, não o ADC
+Margem para 4S: 16,8 V dá 2,800 V, dentro do FSR e bem abaixo do máximo absoluto de entrada
+(VDD + 0,3 = 5,3 V). Uma futura passagem a 4S não obriga a mexer em hardware.
 
-Erro de rácio no pior caso, por tolerância:
+## 3. O erro dominante são os resistores, não o ADC
 
-| Tolerância | Erro de rácio | Erro a 12.6 V |
+| Tolerância | Erro de rácio | Erro a 12,6 V |
 |---|---|---|
-| 1 % | 1.65 % | ±0.21 V |
-| 5 % | 8.47 % | ±1.07 V |
+| 1 % | 1,7 % | ±0,21 V |
+| 5 % | 8,6 % | ±1,09 V |
 
-Consequências:
+A resolução do conversor (12 mV) é uma a duas ordens de grandeza melhor do que o erro dos resistores.
+Gastar em resistores de precisão vale mais do que gastar em bits.
 
-- **Especificar 1 % metal film.** Com 5 % o erro (±1.07 V) é maior que um terço da janela útil
-  de descarga — o sense fica inútil para estimar estado de carga.
-- Mesmo a 1 %, o erro (±0.21 V) é ~19x pior que a resolução do ADC (11 mV). O ADC não é o
-  limitante; os resistores é que são.
-- **Fazer calibração de um ponto em software:** medir a tensão real com multímetro, comparar com a
-  leitura, guardar um fator de escala por canal em ficheiro de configuração. Isto elimina quase todo
-  o erro de ganho e é a diferença entre ±0.21 V e ~±0.02 V.
+**Calibração de um ponto por canal é obrigatória**, seja qual for a tolerância: medir a tensão real com
+multímetro, comparar com a leitura, guardar um fator de escala por canal em ficheiro de configuração.
+Elimina praticamente todo o erro de ganho e permite usar resistores de 5 % com confiança.
 
 ## 4. Filtragem
 
-Acrescentar um condensador em paralelo com o resistor inferior de cada divisor
-(SENSE_E→GND_E e SENSE_D→GND_D). Impedância de fonte do divisor = 10k‖2k2 = **1.80 kΩ**.
+Condensador em paralelo com o resistor inferior de cada divisor (SENSE→GND do respetivo circuito).
+
+Com a impedância de fonte de **833 Ω** (era 1,80 kΩ na revisão 1):
 
 | C | fc |
 |---|---|
-| 100 nF | 883 Hz |
-| 470 nF | 188 Hz |
-| **1 µF** | **88 Hz** |
+| 1,0 µF | 191 Hz |
+| **2,2 µF** | **87 Hz** ← recomendado |
 
-**Recomendado: 1 µF.** A tensão da bateria é um sinal lento e o corte a 88 Hz rejeita bem o ruído
-de comutação do ESC, que é a fonte de ruído dominante neste barco. Os 1.8 kΩ de impedância de fonte
-são suficientemente baixos para não carregar a entrada do ADS1015.
+A tensão de bateria é um sinal lento; o corte a 87 Hz rejeita o ruído de comutação do ESC, que é a
+fonte de ruído dominante a bordo.
 
-## 5. Reservar A2/A3 para corrente
+## 5. Atribuição dos quatro canais
 
-O sense atual só mede **tensão**. O ponto 5 da roadmap (previsão de autonomia) precisa de energia,
-que é V×I×t — sem corrente não há modelo de autonomia possível, só extrapolação de tensão.
+O ADS1015 tem quatro entradas. Um divisor custa cêntimos; um sensor de corrente custa euros. **O recurso
+escasso é o canal, não o componente** — por isso gastam-se três canais em tensões e um em corrente.
 
-O ADS1015 tem 4 canais; a atribuição fica exatamente preenchida:
+| canal | sinal | sensor |
+|---|---|---|
+| A0 | Tensão do casco esquerdo | divisor 5k/1k |
+| A1 | Tensão do casco direito | divisor 5k/1k |
+| A2 | **Tensão da bateria da eletrónica (3S 2200)** | divisor 5k/1k |
+| A3 | Corrente do casco esquerdo | ACS758-050U |
 
-| Canal | Sinal |
+### Porque entra a bateria da eletrónica
+
+As baterias esgotam-se em relógios diferentes: a da eletrónica consome-se com o **tempo decorrido**,
+independentemente de o barco andar; as de propulsão só enquanto há impulso. Em qualquer utilização com
+paragens, deriva ou navegação lenta, **a bateria da eletrónica esgota-se primeiro** (≈2,7 h a 7,2 W).
+
+É também a falha mais grave: ao esgotar-se perdem-se rádio, registo e controlo em simultâneo, e o barco
+fica à deriva sem posição conhecida. O esgotamento da propulsão deixa o barco parado mas localizável.
+
+Este canal não é um mostrador — é o **gatilho de regresso**. Abaixo de um limiar, a missão é abortada.
+
+### Porque sai a corrente do casco direito
+
+Instrumentar um só casco introduz um erro aceitável no modelo de energia. Desequilíbrio entre cascos
+medido em simulação:
+
+| missão | desequilíbrio |
 |---|---|
-| A0 | SENSE_E (tensão casco esquerdo) — existente |
-| A1 | SENSE_D (tensão casco direito) — existente |
-| **A2** | **ISENSE_E (corrente casco esquerdo)** — a reservar |
-| **A3** | **ISENSE_D (corrente casco direito)** — a reservar |
+| linha reta | 0,0 % |
+| ziguezague (viragens alternadas) | −1,6 % |
+| missão de demonstração (1 viragem) | +8,9 % |
+| quadrado (4 viragens do mesmo lado) | +13,6 % |
 
-Sensor sugerido: **ACS758LCB-050U** (Hall, isolado, unidirecional 0–50 A, 60 mV/A, offset 0.6 V).
+Medir um casco e duplicar dá um erro de cerca de **7 %** no total — abaixo da incerteza atual da
+potência dos motores, que ainda não é conhecida.
+
+**Limitação aceite:** um jato obstruído no casco não instrumentado não é detetado diretamente. Mitigação
+parcial: a queda de tensão sob carga funciona como indicador indireto, calibrando no casco instrumentado
+a relação entre queda e corrente e aplicando-a ao outro pela tensão.
+
+### Sensor de corrente
+
+ACS758-050U (Hall, isolado, unidirecional 0–50 A, 60 mV/A, offset 0,6 V).
 
 | Corrente | Saída |
 |---:|---:|
-| 0 A | 0.600 V |
-| 20 A | 1.800 V |
-| 40 A | 3.000 V |
-| 50 A | 3.600 V |
+| 0 A | 0,600 V |
+| 20 A | 1,800 V |
+| 40 A | 3,000 V |
 
-Cabe no mesmo FSR de ±4.096 V, com resolução de **33 mA por conta**. O ADS1015 permite escrever o
-PGA a cada conversão (modo single-shot), portanto os quatro canais podem partilhar o mesmo FSR.
+Cabe no mesmo FSR de ±4,096 V, com resolução de 33 mA por conta.
 
-Notas de ligação:
+Ligação: o sensor fica no casco, em série com o positivo **a jusante da loop key e do relé** (mantém a
+propriedade "0 V / 0 A = casco desarmado"). Atravessam a ponte apenas +5 V, GND_ELEC e a saída analógica
+— sinais e alimentação de baixa corrente, pelo que a regra de nenhum cabo de potência atravessar a ponte
+se mantém.
 
-- O sensor é Hall, **isolado** — fica no casco, em série com o positivo **a jusante da chave XT90-S**
-  (mantém a propriedade "0 V / 0 A = casco desarmado").
-- Atravessam a ponte apenas +5 V, GND_ELEC e a saída analógica: são sinais e alimentação de baixa
-  corrente, portanto **a regra de nenhum cabo de potência atravessar a ponte mantém-se**.
-- **Ratiometria:** a saída do ACS758 é proporcional à sua própria alimentação, enquanto o ADS1015
-  mede contra referência interna. Se o rail de 5 V oscilar, a leitura de corrente desvia
-  proporcionalmente. Com os 4 canais ocupados não sobra entrada para monitorizar o próprio 5 V —
-  se quiseres compensação ratiométrica, é preciso um segundo ADS1015 (endereço I2C alternativo
-  pelo pino ADDR). Alternativa mais simples: DC-DC estável e aceitar o erro residual.
-- Isto liga-se ao pendente já assinalado no esquema (servos no rail de 5 V): se os servos ficarem
-  no mesmo rail, os picos de corrente deles passam a contaminar também a leitura de corrente.
+## 6. Limitações conhecidas
 
-## 6. Alterações a fazer no KiCad
+- **Não sobra canal para monitorizar o próprio rail de 5 V.** A saída do ACS758 é ratiométrica à sua
+  alimentação enquanto o ADS1015 mede contra referência interna, portanto oscilações do 5 V desviam a
+  leitura de corrente. Compensação exigiria um segundo ADS1015 (endereço alternativo pelo pino ADDR).
+- **Casco direito sem medição de corrente** até haver segundo ADS1015 (OPEN-012).
+- Se os servos dos bocais ficarem no rail de 5 V, os seus picos de corrente contaminam também a leitura.
+- **O esquema elétrico v1.11 indica 2S 2200 mAh para a eletrónica; a bateria real é 3S 2200 mAh.**
+  Correção pendente no KiCad.
 
-1. **R1..R4:** manter 10k/2k2, mas anotar **tolerância 1 %** no campo do componente.
-2. **Acrescentar C_SE e C_SD:** 1 µF de SENSE_E→GND_E e de SENSE_D→GND_D.
-3. **Acrescentar os nós ISENSE_E / ISENSE_D** em A2/A3 do U4 (com os ACS758 ou, para já,
-   documentados como reserva — não deixar como no-connect anónimo).
-4. **Nota no esquema, junto de U4:**
-   `ADS1015 PGA = +-4.096 V (GAIN_ONE). Com o default de +-2.048 V a leitura satura acima de 11.4 V de bateria.`
+## 7. Alterações a fazer no KiCad
 
-## 7. Verificação a fazer quando houver hardware
+1. Divisores a 5 kΩ / 1 kΩ, com **tolerância anotada** no campo do componente.
+2. **Três** divisores: SENSE_E, SENSE_D e SENSE_ELEC (novo).
+3. Condensadores de **2,2 µF** em paralelo com o resistor inferior de cada divisor.
+4. A3 do U4 ligado a ISENSE_E (ACS758). Casco direito sem corrente, documentado como reserva.
+5. Corrigir o circuito da caixa IP66 para **LiPo 3S 2200 mAh**.
+6. Nota junto de U4:
+   `ADS1015 PGA = +-4.096 V (GAIN_ONE). Com o default de +-2.048 V a leitura satura acima de 12.3 V.`
 
-- Alimentar o divisor com fonte de bancada, varrer 9→13 V e confirmar que a leitura acompanha
-  linearmente e **não satura** a 11.4 V.
-- Calibrar o fator de escala por canal contra multímetro e guardar em configuração.
-- Só depois disto confiar em qualquer estimativa de estado de carga.
+## 8. Verificação quando houver hardware
+
+- Varrer 9→13 V com fonte de bancada e confirmar que a leitura acompanha linearmente e **não satura**.
+- Calibrar o fator de escala de cada um dos três canais de tensão contra multímetro.
+- Medir o consumo real da eletrónica para fixar o limiar de regresso com margem de segurança.
+- Só depois disto confiar em qualquer estimativa de estado de carga ou de autonomia.

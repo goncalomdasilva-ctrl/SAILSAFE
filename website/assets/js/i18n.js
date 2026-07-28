@@ -131,7 +131,7 @@ export const T = {
   ],
   's.power.t': ['Energia e distribuição', 'Power and distribution'],
   's.power.b': [
-    'Três circuitos completamente independentes. Cada casco tem a sua LiPo 3S de 5000 mAh alojada abaixo do convés, o seu fusível de 40 A e a sua loop key XT90-S, alimentando apenas o ESC e o waterjet daquele lado. A eletrónica tem circuito próprio: LiPo 2S de 2200 mAh, fusível de 10 A, interruptor estanque e conversor DC-DC de 5 V. Nenhum cabo de potência atravessa a ponte — só passam sinais. Os negativos dos dois cascos encontram o GND da eletrónica num único ponto, dentro da caixa IP66, pelo fio preto da ficha servo de cada ESC.',
+    'Três circuitos completamente independentes. Cada casco tem a sua LiPo 3S de 5000 mAh alojada abaixo do convés, o seu fusível de 40 A e a sua loop key XT90-S, alimentando apenas o ESC e o waterjet daquele lado. A eletrónica tem circuito próprio: LiPo 3S de 2200 mAh, fusível de 10 A, interruptor estanque e conversor DC-DC de 5 V. Nenhum cabo de potência atravessa a ponte — só passam sinais. Os negativos dos dois cascos encontram o GND da eletrónica num único ponto, dentro da caixa IP66, pelo fio preto da ficha servo de cada ESC.',
     'Three completely independent circuits. Each hull carries its own 5000 mAh 3S LiPo below deck, its own 40 A fuse and its own XT90-S loop key, feeding only that side\'s ESC and waterjet. The electronics run on their own circuit: a 2200 mAh 2S LiPo, a 10 A fuse, a sealed switch and a 5 V DC-DC converter. No power cable crosses the bridge — only signals do. The two hull negatives meet electronics ground at a single point inside the IP66 enclosure, through the black wire of each ESC servo lead.'
   ],
   's.propulsion.t': ['Propulsão', 'Propulsion'],

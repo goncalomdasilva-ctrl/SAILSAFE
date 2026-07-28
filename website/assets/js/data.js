@@ -191,7 +191,7 @@ export const PARTS = {
   bateria_5000_esq: { alias: 'bateria_5000_dir' },
   bateria_pi_2200: {
     sub: 'power', qty: 1,
-    name: P('LiPo 2S 2200 mAh — eletrónica', 'LiPo 2S 2200 mAh — electronics'),
+    name: P('LiPo 3S 2200 mAh — eletrónica', 'LiPo 3S 2200 mAh — electronics'),
     desc: P('Bateria dedicada à eletrónica, através do conversor DC-DC de 5 V. Os positivos das duas redes permanecem separados e as baterias nunca são ligadas em paralelo; existe uma única ligação de referência, em estrela, entre o GND da eletrónica e o barramento negativo de potência.',
             'Dedicated electronics battery feeding the 5 V DC-DC converter. The two positive rails stay separate and the batteries are never paralleled; a single star reference bonds electronics ground to the power negative bus.'),
     specs: [P('35 × 105 × 25 mm · 7,4 V (2S)', '35 × 105 × 25 mm · 7.4 V (2S)'),
@@ -307,7 +307,7 @@ export const SPECS = [
   { g:'prop', k:P('Regime de navegação','Operating regime'), v:P('Deslocamento','Displacement'), s:'validated' },
 
   { g:'elec', k:P('Baterias de propulsão','Propulsion batteries'), v:'2 × LiPo 3S 5000 mAh', s:'validated' },
-  { g:'elec', k:P('Bateria de eletrónica','Electronics battery'), v:'1 × LiPo 2S 2200 mAh', s:'validated' },
+  { g:'elec', k:P('Bateria de eletrónica','Electronics battery'), v:'1 × LiPo 3S 2200 mAh', s:'validated' },
   { g:'elec', k:P('Arquitetura elétrica','Electrical architecture'), v:P('3 circuitos independentes','3 independent circuits'), s:'validated' },
   { g:'elec', k:P('Tensão de propulsão','Propulsion voltage'), v:'11,1 V (3S)', s:'validated' },
   { g:'elec', k:P('Tensão da eletrónica','Electronics voltage'), v:'7,4 V (2S)', s:'validated' },
