@@ -1095,7 +1095,7 @@ comando textual em percentagem (L:x R:y + newline)
 
 #### Decisões técnicas
 - O corte remoto atua no POSITIVO, nunca no negativo. O negativo de cada casco é a referência de massa e o seu único caminho até à massa da eletrónica é o fio preto da ficha servo do ESC; cortá-lo obrigaria a corrente de retorno a passar por um fio dimensionado para miliamperes.
-- Hierarquia de proteção fixada em fusível (40–50 A) < relé (60–70 A) < cabo (6 mm²). O fusível tem de ser o elo mais fraco por ser o único componente desenhado para falhar de forma controlada. Corrigido um erro de raciocínio a meio da sessão que ia dimensionar o fusível para 60–70 A, o que o tornaria incapaz de proteger o ESC de 40 A.
+- Hierarquia de proteção fixada em fusível (40–50 A) < relé (60–70 A) < cabo (6 mm²). O fusível tem de ser o elo mais fraco por ser o único componente desenhado para falhar de forma controlada. Descartada a hipótese de dimensionar o fusível também a 60–70 A por simetria com o relé: nesse caso deixaria de proteger o ESC de 40 A, que arderia sem o fusível chegar a atuar.
 - Bobinas dos relés alimentadas pela bateria do próprio casco, a montante dos contactos: alimentá-las pela bateria da eletrónica custaria ~35 % da autonomia desta (1,9 h → 1,3 h), contra 4–6 % por missão quando saem do casco.
 - Um módulo RC-switch por casco, não um partilhado: um só módulo obrigaria a corrente das bobinas a atravessar a ponte pela massa da eletrónica e criaria um ponto único de falha a comandar os dois cascos. Um único canal do recetor comanda ambos.
 - O caminho do kill não passa por software do projeto. O PWM do ESP32 é gerado pelo periférico LEDC, em hardware: se o firmware encravar sem reiniciar, o sinal mantém-se com o último valor e o failsafe de software nunca chega a correr.
@@ -1112,7 +1112,7 @@ comando textual em percentagem (L:x R:y + newline)
 - Continua sem sobrar canal para monitorizar o rail de 5 V, do qual a saída do ACS758 é ratiométrica.
 - O casco direito fica sem medição de corrente até haver segundo ADS1015.
 - Um jato obstruído no casco não instrumentado não é detetado diretamente; só indiretamente pela queda de tensão.
-- Não foi possível obter preços de forma automática na maioria das lojas (a Amazon e várias páginas devolvem vazio). Só o recetor ELRS ER6 foi confirmado, a 29,90 € numa loja europeia; o resto do orçamento assenta em ordens de grandeza.
+- Orçamento por fechar. Apenas o recetor ELRS ER6 tem preço confirmado (29,90 €, distribuidor europeu); as restantes rubricas assentam em ordens de grandeza e carecem de cotação antes de encomendar.
 - Nada disto está verificado em hardware: continuam em falta ESCs, motores, GPS, relés e rádio.
 
 #### Resultado do dia
@@ -1133,3 +1133,45 @@ comando textual em percentagem (L:x R:y + newline)
 - Interface `RealHeading` para o BNO055, ainda por fazer.
 - Buffer circular de logging como exercício de AED.
 - Modo manual com comando de consola ligado ao Raspberry Pi, como forma de exercitar o código e pilotar em ensaios próximos sem depender do rádio.
+
+### 2026-07-29
+
+#### Trabalho realizado
+- Escrito `control/real_heading.py`: leitor de rumo real do BNO055 com a mesma interface `read()` do `SimulatedHeading`, mais o tratamento de tudo o que a fonte simulada nunca teve de tratar (calibração NDOF, ausência de solução de fusão, I2C em baixo, offset de montagem, declinação magnética).
+- Escrito `tools/heading_bench.py`: ensaio de "rodar à mão". Não abre a série nem fala com o ESP32; calcula e imprime os L/R que o mixer daria, sem os enviar. Tem modo `--fake` para exercitar o ecrã sem hardware.
+- Escritos 13 testes em `tests/test_real_heading.py`, todos com driver falso e sem hardware. Os 18 testes anteriores continuam a passar.
+- Arquivadas 10 versões antigas de CAD em `hardware/mechanical/archive/`, com README a explicar o que está lá e o que deliberadamente não está.
+- Corrigido `tools/README.md`, que ainda dava o v6_3 como modelo corrente e não listava o `build_concept_v6_4.py`.
+
+#### Decisões técnicas
+- **O `RealHeading` levanta exceção em vez de devolver um número.** Um sensor descalibrado não dá erro: dá um valor plausível e errado, que é pior do que a ausência de valor, porque a ausência obriga a decidir e o valor errado não. `HeadingUnavailable` força o chamador ao estado seguro, como já acontece com a perda de série.
+- Calibração como condição de segurança e não como mostrador: exige-se `sys >= 3` **e** `mag >= 3`. O `sys` sozinho não basta e há um teste dedicado a isso. Com o I2C em baixo, `calibration()` devolve `(0,0,0,0)` — falha para o lado conservador.
+- Tolerância `max_stale_s = 0,5 s`: perante uma leitura falhada devolve a última boa se for mais nova do que isso, e levanta se não for. A 5 Hz uma leitura perdida é normal e desarmar por causa dela dava um barco inutilizável; ignorar falhas dava navegação às cegas. A janela resolve as duas coisas com um só parâmetro.
+- Saída em (−180, 180], a convenção do `SimulatedHeading`, e não a de bússola. Como o `heading_error()` normaliza a diferença, a convenção é indiferente ao controlador, e assim o `RealHeading` é mesmo um *drop-in*. O ecrã da bancada mostra `% 360` só para comparação com uma bússola.
+- Driver injetado por parâmetro, com o `import adafruit_bno055` dentro do `create_bno055()`: o módulo importa-se e testa-se num PC sem `adafruit-blinka`.
+- **O `main.py` não foi tocado, de propósito.** Enquanto a posição vier do `SimulatedBoat`, misturar rumo real com posição simulada dá uma malha incoerente: o barco sintético avança segundo o rumo *dele*, não segundo o do sensor, e as duas coisas divergem à primeira iteração. O `RealHeading` só entra no `main.py` quando houver GPS.
+- Ordem de trabalhos revista para o hardware: loop key primeiro, depois um motor em bancada, depois a segunda bateria, e só então o kill-switch remoto. O ESC só chega domingo.
+- Fusível de 30 A dado por suficiente para a bancada: com o tecto de 30 % do ESP32 a corrente fica muito abaixo, e 30 A à frente de um ESC de 40 A queima primeiro que o ESC, que é o que se quer num ensaio. Os 40–50 A da hierarquia da v1.12 passam a ser requisito para potência plena na água, não para bancada.
+
+#### Problemas / limitações
+- **O `verify_concept.py` não corre no modelo corrente.** Rebenta com `KeyError: 'raspberry_pi_4'` no v6_4, porque o v6_4 decompôs os módulos em sub-peças (42 → 88 sólidos): `raspberry_pi_4` passou a 13 `rpi4_*`, `esp32_devkit` a 8 `esp32_*`, e o mesmo para BNO055 e GPS. Dos 11 nomes da lista `INSIDE`, 7 existem no v6_4 e 11 existiam no v6_3. Consequência: as verificações de *bounding box* e de colisões correram, mas **as folgas ao interior da caixa IP66 e a estimativa de CG nunca correram no v6_4**. O dicionário `MASS` tem o mesmo problema, portanto o CG estaria incompleto mesmo sem o crash.
+- Corrigir o KiCad ficou bloqueado: o projeto está em `Documents\Autonomus_boat_catamara\`, fora do repositório, e o repo só tem um netlist de 22-07 e um PNG. A fonte do esquema não está versionada, logo qualquer correção não fica registada. Acrescentar os condensadores de 2,2 µF exige mexer em símbolos e fios e tem de ser feito no Eeschema, não por script.
+- Declinação magnética ainda por confirmar. Está a −2,1° como ordem de grandeza para Lisboa, não como valor verificado na calculadora da NOAA/NCEI.
+- O `RealHeading` nunca viu um BNO055. Está testado contra um driver falso, o que valida a política e não a leitura.
+
+#### Resultado do dia
+- A navegação passa a ter uma fonte de rumo real pronta a ligar, com o comportamento de falha definido antes de haver falhas para observar.
+- O `hardware/mechanical/` deixou de ter 14 ficheiros STEP onde 4 interessam.
+
+#### Lições aprendidas
+- Ao arquivar versões, o número na versão não diz se é lixo. O `v6_2` parecia velho e é o `SRC` por omissão dos dois scripts de build; o `v6_3` parecia superado e é a geometria de que foi feito o `.glb` do site publicado. Arquivá-los partia a reconstrução do modelo e a proveniência do site. **O critério é quem depende do ficheiro, não a data nem o número.**
+- Um script de verificação que rebenta é melhor que um que devolve resultados sobre metade das peças em silêncio — mas só se alguém o correr. Este esteve uma semana sem correr no modelo que verifica.
+- Detalhar um modelo CAD tem custo escondido: decompor peças em sub-peças invalida por nome tudo o que dependia dos nomes anteriores.
+- Um sensor que falha ruidosamente é mais fácil de programar do que um que mente. A parte difícil do `RealHeading` não foi ler o I2C; foi decidir o que fazer quando a leitura existe e não presta.
+
+#### Próximo passo
+- Comprar a loop key. Confirmar na ficha do jato se pode rodar a seco (chumaceira/vedante lubrificados pela água) antes de o pôr a girar sem água.
+- Domingo, com o ESC: um motor em bancada, ≤30 %, amarrado, com o fusível de 30 A em série.
+- Corrigir a lista `INSIDE` e o dicionário `MASS` do `verify_concept.py` para os nomes do v6_4, e voltar a correr as folgas e o CG.
+- Copiar o projeto KiCad para `hardware/electrical/kicad/` e commitar, antes de lhe mexer.
+- Correr o `heading_bench.py` no Pi com o BNO055, e calibrar já com o barco montado — o ferro e as correntes do barco distorcem o campo, e uma calibração feita com a placa na mão não vale para o barco montado.
