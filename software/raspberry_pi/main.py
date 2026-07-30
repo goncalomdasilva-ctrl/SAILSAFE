@@ -13,11 +13,14 @@ Maquina de estados: DISARMED <-> ARMED / NAV.
 - Fim de missao: para os motores e volta a DISARMED (estado seguro).
 - STOP tem prioridade absoluta e forca DISARMED.
 - O regresso da ligacao serie nunca arma sozinho.
+- Fontes sinteticas NUNCA comandam motores sem ser pedido na linha de
+  comandos. Ver nav_guard() e os modos --sim / --sim-motores.
 
 Regista a sessao em CSV via telemetry.SessionLogger.
 Teclas (terminal): a=ARM  n=NAV  d=DISARM  s=STOP  q=sair
 """
 
+import argparse
 import signal
 import sys
 import select
@@ -83,6 +86,53 @@ class KeyReader:
 
 NavStep = namedtuple("NavStep", "left right bearing dist done lat lon")
 
+# --- guarda do modo NAV -------------------------------------------------
+# O nav_step() fecha a malha no SimulatedBoat: le a posicao dele, calcula
+# L/R a partir dela e realimenta-o. Se esses mesmos L/R seguirem para o
+# ESP32, motores reais executam a missao de um barco que so existe em
+# memoria -- o barco fisico vai onde calhar e o sintetico "chega" ao
+# waypoint. A malha fica fechada no lado errado.
+#
+# Por isso o modo NAV pergunta pela PROVENIENCIA das fontes antes de deixar
+# comandar seja o que for.
+
+NAV_RECUSADO = "recusado"      # fontes sinteticas sem autorizacao explicita
+NAV_SEM_MOTORES = "sem_motores"  # simulacao: calcula e imprime, envia so 0/0
+NAV_COM_MOTORES = "com_motores"  # propulsao real segue para o ESP32
+
+
+def is_synthetic(source):
+    """True se a fonte for sintetica.
+
+    O valor por omissao e True de proposito: uma fonte que nao se declara
+    e tratada como sintetica e o NAV recusa. Falhar para o lado conservador
+    e a mesma politica do RealHeading -- perante duvida, nao dar numero.
+    """
+    return getattr(source, "SYNTHETIC", True)
+
+
+def nav_guard(sources, allow_sim=False, sim_drives_motors=False):
+    """Decide se o NAV pode arrancar e se pode comandar motores.
+
+    Devolve (modo, motivo). O modo e uma das constantes NAV_* acima.
+
+    Regra: com fontes reais, o NAV comanda os motores -- e para isso que
+    existe. Com fontes sinteticas exige-se um pedido explicito na linha de
+    comandos, e mesmo assim a propulsao so sai com --sim-motores. O
+    --sim sozinho segue o padrao ja usado no tools/heading_bench.py:
+    calcula os comandos e imprime-os sem os enviar.
+    """
+    sinteticas = [s for s in sources if is_synthetic(s)]
+    if not sinteticas:
+        return NAV_COM_MOTORES, "fontes reais"
+    nomes = ", ".join(type(s).__name__ for s in sinteticas)
+    if sim_drives_motors:
+        return NAV_COM_MOTORES, f"--sim-motores com fontes sinteticas ({nomes})"
+    if allow_sim:
+        return NAV_SEM_MOTORES, f"--sim: fontes sinteticas ({nomes}), sem propulsao"
+    return NAV_RECUSADO, (f"fontes sinteticas ({nomes}) sem --sim. "
+                          "Motores reais nao seguem um barco imaginario.")
+
 
 def nav_step(nav, ctrl, boat, throttle=NAV_THROTTLE, cap=SAFE_MAX, dt=HEARTBEAT_S):
     """Um passo de navegacao autonoma, sem qualquer I/O.
@@ -108,7 +158,19 @@ def nav_step(nav, ctrl, boat, throttle=NAV_THROTTLE, cap=SAFE_MAX, dt=HEARTBEAT_
     return NavStep(left, right, bearing, dist, False, lat, lon)
 
 
-def main():
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(description="SAILSAFE - processo principal.")
+    p.add_argument("--sim", action="store_true",
+                   help="permite NAV com fontes sinteticas; calcula e imprime "
+                        "os comandos SEM os enviar (so heartbeat 0/0)")
+    p.add_argument("--sim-motores", action="store_true", dest="sim_motores",
+                   help="PERIGO: NAV com fontes sinteticas a comandar mesmo os "
+                        "motores. So com o barco preso na bancada.")
+    return p.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
@@ -139,6 +201,25 @@ def main():
                          heading=0.0, yaw_gain=0.4, speed_ms=3.0)
     nav = WaypointNav(MISSION_WAYPOINTS, arrival_radius_m=ARRIVAL_RADIUS_M)
 
+    # As fontes nao mudam durante a execucao, portanto a guarda decide-se
+    # uma vez e fica dita no arranque -- e no log -- em vez de so aparecer
+    # quando alguem carrega em 'n'.
+    nav_mode, nav_motivo = nav_guard([boat], allow_sim=args.sim,
+                                     sim_drives_motors=args.sim_motores)
+    log.log("NAVMODE", state, f"{nav_mode}: {nav_motivo}")
+    if nav_mode == NAV_RECUSADO:
+        print(f"[NAV] indisponivel: {nav_motivo}", flush=True)
+        print("[NAV] usar --sim (sem propulsao) ou --sim-motores (com o barco "
+              "preso na bancada).", flush=True)
+    elif nav_mode == NAV_SEM_MOTORES:
+        print(f"[NAV] {nav_motivo}. Os comandos sao calculados e impressos, "
+              "nao enviados.", flush=True)
+    elif args.sim_motores:
+        print("[AVISO] --sim-motores: uma missao SINTETICA vai comandar os "
+              "motores reais.", flush=True)
+        print("[AVISO] O barco fisico nao sabe onde esta. So com ele preso "
+              "e fora de agua.", flush=True)
+
     with KeyReader() as keys:
         try:
             while running:
@@ -164,18 +245,28 @@ def main():
                             print("[WARN] Nao e possivel ARM sem ligacao serie", flush=True)
                             log.log("WARN", state, "arm sem serie")
                 elif k == "n":
-                    if state == DISARMED and link.is_open:
+                    # A serie so e exigida quando o NAV vai mesmo comandar
+                    # motores. Uma simulacao sem propulsao nao precisa de
+                    # ESP32 nenhum para correr.
+                    precisa_serie = nav_mode == NAV_COM_MOTORES
+                    if nav_mode == NAV_RECUSADO:
+                        print(f"[NAV] recusado: {nav_motivo}", flush=True)
+                        log.log("NAV", state, "recusado")
+                    elif state != DISARMED:
+                        print("[WARN] NAV so a partir de DISARMED", flush=True)
+                    elif precisa_serie and not link.is_open:
+                        print("[WARN] Nao e possivel NAV sem ligacao serie", flush=True)
+                    else:
                         state = NAV
                         # missao recomecada do inicio, a partir da posicao atual
                         nav = WaypointNav(MISSION_WAYPOINTS,
                                           arrival_radius_m=ARRIVAL_RADIUS_M)
                         ctrl.clear_target()
                         last_hb = 0.0
-                        log.log("STATE", state, f"missao {len(MISSION_WAYPOINTS)} wp")
+                        log.log("STATE", state,
+                                f"missao {len(MISSION_WAYPOINTS)} wp ({nav_mode})")
                         print(f"[STATE] {state} (navegacao por waypoints, "
-                              f"{len(MISSION_WAYPOINTS)} wp)", flush=True)
-                    elif not link.is_open:
-                        print("[WARN] Nao e possivel NAV sem ligacao serie", flush=True)
+                              f"{len(MISSION_WAYPOINTS)} wp, {nav_mode})", flush=True)
                 elif k == "d":
                     if state != DISARMED:
                         state = DISARMED
@@ -189,7 +280,11 @@ def main():
                         print("[INFO] ESP32 ligado (continua DISARMED)", flush=True)
                         log.log("SERIAL", state, "reconectado")
 
-                if state in (ARMED, NAV) and not link.is_open:
+                # A perda de serie desarma sempre que haja propulsao em jogo.
+                # A excecao e o NAV em simulacao sem motores, que nao comanda
+                # nada e por isso nao tem nada para desarmar.
+                sem_propulsao = state == NAV and nav_mode == NAV_SEM_MOTORES
+                if state in (ARMED, NAV) and not link.is_open and not sem_propulsao:
                     state = DISARMED
                     log.log("STATE", state, "perda serie")
                     print("[WARN] Ligacao serie perdida -> DISARMED", flush=True)
@@ -210,15 +305,24 @@ def main():
                         print("[NAV] Missao concluida -> DISARMED", flush=True)
                         print(f"[STATE] {state}", flush=True)
                     else:
-                        link.send_motors(step.left, step.right)
-                        log.log("TX", state, f"{step.left:.0f},{step.right:.0f}")
+                        # NAV_SEM_MOTORES: os comandos calculam-se e imprimem-se,
+                        # mas o que sai para o ESP32 e 0/0 -- o suficiente para
+                        # manter o failsafe satisfeito sem dar propulsao.
+                        if nav_mode == NAV_COM_MOTORES:
+                            link.send_motors(step.left, step.right)
+                            log.log("TX", state, f"{step.left:.0f},{step.right:.0f}")
+                            marca = ""
+                        else:
+                            link.send_motors(0, 0)
+                            log.log("TX", state, "0,0 (sim)")
+                            marca = "  [nao enviado]"
                         log.log("NAV", state,
                                 f"wp={nav.index} dist={step.dist:.1f} "
                                 f"bearing={step.bearing:.1f} heading={boat.heading:.1f} "
                                 f"lat={step.lat:.6f} lon={step.lon:.6f}")
                         print(f"[NAV] wp={nav.index}  dist={step.dist:6.1f} m  "
                               f"bearing={step.bearing:5.1f}  heading={boat.heading:5.1f}  "
-                              f"L={step.left:.0f} R={step.right:.0f}", flush=True)
+                              f"L={step.left:.0f} R={step.right:.0f}{marca}", flush=True)
 
                 if link.is_open:
                     line = link.read_line()

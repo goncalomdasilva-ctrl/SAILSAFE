@@ -18,6 +18,8 @@ class SimulatedHeading:
     NAO e uma medicao real; e so para fechar o ciclo em simulacao.
     """
 
+    SYNTHETIC = True
+
     def __init__(self, heading=0.0, yaw_gain=0.05):
         self.heading = normalize_angle(heading)
         self.yaw_gain = yaw_gain
@@ -38,6 +40,8 @@ class SimulatedBoat:
     media dos motores. Serve para fechar a malha de navegacao sem GPS, BNO055
     nem motores. NAO representa medicoes reais.
     """
+
+    SYNTHETIC = True
 
     def __init__(self, lat, lon, heading=0.0, yaw_gain=0.4, speed_ms=3.0):
         self.lat = lat

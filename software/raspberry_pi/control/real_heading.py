@@ -62,6 +62,10 @@ class RealHeading:
                        isto; caso contrario levanta HeadingUnavailable
     """
 
+    # Fonte real: o main.py so deixa o modo NAV comandar o ESP32 quando
+    # todas as fontes tem SYNTHETIC False. Ver nav_guard() no main.py.
+    SYNTHETIC = False
+
     def __init__(self, driver, mount_offset_deg=0.0,
                  declination_deg=DECLINATION_UNSET,
                  min_sys=3, min_mag=3, max_stale_s=0.5, clock=time.monotonic):

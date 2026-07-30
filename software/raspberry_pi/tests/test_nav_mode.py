@@ -14,7 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from control.heading import HeadingController, heading_error
 from control.navigation import WaypointNav, haversine_m
 from control.sources import SimulatedBoat
-from main import (nav_step, MISSION_START, MISSION_WAYPOINTS,
+from control.real_heading import RealHeading
+from main import (nav_step, nav_guard, is_synthetic, parse_args,
+                  NAV_RECUSADO, NAV_SEM_MOTORES, NAV_COM_MOTORES,
+                  MISSION_START, MISSION_WAYPOINTS,
                   ARRIVAL_RADIUS_M, NAV_THROTTLE, SAFE_MAX, HEARTBEAT_S)
 
 
@@ -124,6 +127,78 @@ def test_parametros_de_seguranca_coerentes():
     assert NAV_THROTTLE <= SAFE_MAX, "throttle de NAV acima do teto de seguranca"
     assert SAFE_MAX <= 30, "o ESP32 rejeita comandos acima de 30%"
     assert HEARTBEAT_S <= 0.5, "heartbeat mais lento que o failsafe de ~1 s do ESP32"
+
+
+# --- guarda do modo NAV -------------------------------------------------
+# O que estes testes protegem: que uma fonte sintetica nunca comande motores
+# reais sem que alguem o tenha pedido explicitamente na linha de comandos.
+
+class _FonteReal:
+    SYNTHETIC = False
+
+
+class _FonteMuda:
+    """Fonte que nao declara proveniencia. Deve ser tratada como sintetica."""
+
+
+def test_simulated_boat_declara_se_sintetico():
+    boat, _, _ = _fresh()
+    assert is_synthetic(boat), "o SimulatedBoat tem de se declarar sintetico"
+
+
+def test_real_heading_declara_se_real():
+    assert not is_synthetic(RealHeading(driver=object())), \
+        "o RealHeading tem de se declarar fonte real"
+
+
+def test_fonte_que_nao_se_declara_conta_como_sintetica():
+    """Falhar fechado: perante duvida sobre a proveniencia, o NAV recusa."""
+    assert is_synthetic(_FonteMuda())
+    modo, _ = nav_guard([_FonteMuda()])
+    assert modo == NAV_RECUSADO
+
+
+def test_sinteticas_sem_flags_recusam_nav():
+    """O caso perigoso: motores reais a seguir o barco sintetico."""
+    boat, _, _ = _fresh()
+    modo, motivo = nav_guard([boat])
+    assert modo == NAV_RECUSADO
+    assert "SimulatedBoat" in motivo
+
+
+def test_sim_permite_nav_mas_sem_propulsao():
+    boat, _, _ = _fresh()
+    modo, _ = nav_guard([boat], allow_sim=True)
+    assert modo == NAV_SEM_MOTORES
+
+
+def test_sim_motores_permite_propulsao_com_fontes_sinteticas():
+    """Escotilha deliberada para a bancada, com o barco preso."""
+    boat, _, _ = _fresh()
+    modo, _ = nav_guard([boat], allow_sim=True, sim_drives_motors=True)
+    assert modo == NAV_COM_MOTORES
+    # --sim-motores nao precisa de --sim para valer
+    modo, _ = nav_guard([boat], sim_drives_motors=True)
+    assert modo == NAV_COM_MOTORES
+
+
+def test_fontes_reais_comandam_motores_sem_flags():
+    modo, _ = nav_guard([_FonteReal(), _FonteReal()])
+    assert modo == NAV_COM_MOTORES
+
+
+def test_uma_fonte_sintetica_contamina_o_conjunto():
+    """Basta uma fonte sintetica para o conjunto deixar de ser real."""
+    boat, _, _ = _fresh()
+    modo, _ = nav_guard([_FonteReal(), boat])
+    assert modo == NAV_RECUSADO
+
+
+def test_por_omissao_a_linha_de_comandos_e_a_mais_segura():
+    a = parse_args([])
+    assert not a.sim and not a.sim_motores
+    assert parse_args(["--sim"]).sim
+    assert parse_args(["--sim-motores"]).sim_motores
 
 
 def _run():

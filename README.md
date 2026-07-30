@@ -41,9 +41,19 @@ python3 software/raspberry_pi/tests/test_heading.py
 python3 software/raspberry_pi/tests/test_mixer.py
 python3 software/raspberry_pi/tests/test_navigation.py
 
+python3 software/raspberry_pi/tests/test_real_heading.py
+
 # main process (ESP32 over USB optional)
-python3 software/raspberry_pi/main.py
+python3 software/raspberry_pi/main.py               # DISARMED/ARMED only
+python3 software/raspberry_pi/main.py --sim         # NAV in simulation, no propulsion sent
+python3 software/raspberry_pi/main.py --sim-motores # NAV in simulation, motors DO run
 ```
+
+`NAV` closes the control loop on a synthetic boat. Commanding real motors from it means
+the physical boat follows a mission it has no knowledge of, so the mode refuses to start
+unless the synthetic sources are declared on the command line. `--sim` computes and prints
+the motor commands without sending them; `--sim-motores` actually drives the ESCs and is
+only for a boat clamped to the bench, out of the water.
 
 ## Documentation
 - System architecture: `docs/SAILSAFE_Architecture_v1_12.docx`

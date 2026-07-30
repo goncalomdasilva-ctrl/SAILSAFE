@@ -1212,3 +1212,41 @@ comando textual em percentagem (L:x R:y + newline)
 - Confirmar a declinação magnética na calculadora da NOAA para as coordenadas do ensaio. O WMM2025 dá ≈ −0,9° para Lisboa, e não os −2,1° que estão no `real_heading.py` como ordem de grandeza; a ~1° a declinação é ruído comparada com o erro de calibração do magnetómetro.
 - Bancada adiada por decisão: sem multímetro fiável não há verificação de continuidade, e soldar o BNO055 sem forma de confirmar que não há curto não se justifica. Solda, loop key, ESC, motor e multímetro passam a um único pacote, quando o ESC chegar.
 - Confirmar se o recetor ELRS escolhido precisa de emissora que ainda não existe — os 29,90 € do ER6 são metade da cadeia.
+
+### 2026-07-30 (sessão 2 — revisão da cadeia de segurança)
+
+#### Trabalho realizado
+- Revisão linha a linha dos três ficheiros que decidem se os motores param: `main.py`, `communication/serial_link.py` e `esp32/esp32_boat_.ino` (475 linhas). Quatro problemas encontrados, um deles corrigido hoje.
+- **Corrigido: o modo NAV podia comandar motores reais a partir do barco sintético.** Entrar em NAV *exigia* ligação série, e o `nav_step()` enviava ao ESP32 os L/R calculados a partir da posição do `SimulatedBoat`. Com motores ligados, carregar em `n` punha hélices reais a executar a missão de um barco que só existe em memória.
+- As fontes passam a declarar proveniência (`SYNTHETIC`): `True` no `SimulatedBoat` e no `SimulatedHeading`, `False` no `RealHeading`. O `nav_guard()` do `main.py` decide o modo a partir disso e das opções da linha de comandos, uma vez no arranque, e imprime a decisão.
+- Três modos: sem opções o NAV **recusa** com fontes sintéticas; `--sim` corre a missão e imprime os comandos **sem os enviar** (só heartbeat 0/0); `--sim-motores` comanda mesmo os motores, com aviso, para bancada com o barco preso.
+- O NAV em `--sim` deixou de exigir ESP32 — uma simulação sem propulsão não precisa de hardware nenhum. A perda de série continua a desarmar em todos os modos com propulsão em jogo.
+- 9 testes novos no `test_nav_mode.py` (8 → 17; 31 → 40 no total).
+
+#### Decisões técnicas
+- **A proveniência é atributo da fonte, não parâmetro do chamador.** Se fosse uma opção passada ao `nav_guard()`, seria mais uma coisa para alguém se lembrar de pôr certa; como atributo de classe, o `SimulatedBoat` traz consigo a informação de que é sintético para onde quer que vá.
+- **`is_synthetic()` devolve `True` por omissão.** Uma fonte que não se declara é tratada como sintética e o NAV recusa. É a mesma política do `RealHeading`: perante dúvida, não dar número. O inverso — assumir real — faria com que esquecer o atributo numa fonte nova destrancasse os motores em silêncio.
+- **`--sim` não envia propulsão, segue o padrão do `tools/heading_bench.py`:** calcula, imprime, não envia. Já existia precedente no projeto para "exercitar a lógica sem atuar", e não valia a pena inventar um segundo padrão para a mesma ideia.
+- `--sim-motores` mantido em vez de proibido: com o barco preso e fora de água, correr uma missão sintética contra os ESCs é um ensaio legítimo. O que não é legítimo é isso acontecer sem ninguém ter pedido.
+- A guarda decide-se no arranque e não quando se carrega em `n`: as fontes não mudam durante a execução, e é preferível saber o que a sessão pode fazer antes de começar do que descobri-lo ao tentar.
+
+#### Problemas / limitações
+- **Por corrigir: o ESP32 não tem re-arme.** Depois do failsafe disparar, qualquer comando válido volta a pôr os motores a girar (`failsafeActive = false` no `processCommand`). A regra "o regresso da ligação nunca arma sozinho" existe no `main.py` e não existe na camada que segura os ESCs. É o mesmo raciocínio do kill-switch aplicado ao contrário: a autoridade está onde a regra não está.
+- **Por corrigir: o STOP é um único `write()` best-effort.** `link.stop_motors()` devolve `True`/`False` e ninguém lê o retorno; não há repetição nem confirmação. Salva-o o failsafe do ESP32 1 s depois, mas então o STOP primário é o timeout e não o comando.
+- **Por corrigir: sem terminal não há controlo nenhum.** `KeyReader.enabled = sys.stdin.isatty()`; debaixo de systemd ou `nohup` — que é como isto vai correr no barco — não há ARM, STOP nem DISARM.
+- Menores: `SAFE_MAX` (Pi) e `PERCENT_MAX_SAFE` (ESP32) são o mesmo número em dois sítios; `DEFAULT_PORT` fixo em `/dev/ttyUSB0` não é estável com o GPS também em USB; `String` no `processCommand` fragmenta a heap ao fim de horas; `delay(20)` bloqueia o loop.
+- Nenhum destes quatro foi observado em hardware. A revisão é de leitura, não de ensaio.
+
+#### Resultado do dia
+- O erro que podia partir hardware no primeiro ensaio de bancada com motores deixou de ser possível por omissão, e passou a exigir uma opção com nome que diz o que faz.
+- A cadeia de segurança está lida e os três problemas que ficam estão escritos com o mecanismo, não só com o sintoma.
+
+#### Lições aprendidas
+- Uma regra escrita no comentário não é uma regra. O `real_heading.py` já dizia que misturar rumo real com posição simulada dá uma malha incoerente, e o raciocínio estava certo — mas ficou no docstring, e o código continuava a deixar fazê-lo. A diferença entre saber e proteger é uma linha de `if`.
+- Em sistemas em camadas, a pergunta útil não é "a regra existe?" mas "a regra existe na camada que tem a autoridade?". O Pi recusa armar sozinho; quem manda nos ESCs é o ESP32, e esse aceita qualquer coisa que apareça na porta.
+- Valores por omissão são decisões de segurança. `getattr(s, "SYNTHETIC", True)` e `getattr(s, "SYNTHETIC", False)` diferem numa palavra e em tudo o resto: um faz com que esquecer o atributo trave os motores, o outro faz com que os liberte.
+
+#### Próximo passo
+- Latch de re-arme no ESP32, antes de ligar motores a sério.
+- STOP repetido até confirmação, e caminho de controlo que não dependa de terminal interativo.
+- Unificar o tecto de 30% num sítio só e passar a porta série para um caminho `by-id`.
