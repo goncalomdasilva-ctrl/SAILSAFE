@@ -21,6 +21,16 @@ X 254,5..453,5 · Y ±75 · Z 154,5..252.
 | `build_concept_v6_3.py` | lê o v6_2 e escreve o v6_3 com os componentes internos | nenhuma (Python 3) |
 | `build_concept_v6_4.py` | lê o v6_2 e escreve o v6_4 (componentes detalhados, jatos vetorizados) | nenhuma (Python 3) |
 | `verify_concept.py` | integridade referencial, bounding boxes, colisões, folgas, CG | nenhuma |
+
+O `verify_concept.py` raciocina por **módulo**, não por sólido: desde o v6_4 o Raspberry
+Pi são 13 sólidos `rpi4_*`, o ESP32 são 8 `esp32_*`, e o mesmo para BNO055, GPS e
+waterjets. A tabela `MODULES` mapeia módulo → sólidos → massa; a bounding box do módulo é
+a união das sub-peças e a massa aplica-se no centroide dessa união. Antes de calcular
+folgas ou CG, o script imprime uma verificação de integridade dessa tabela — sólidos sem
+módulo (**órfãos**, que entrariam no CG com massa 0), módulos cujos sólidos não existem no
+STEP (**ausentes**) e sólidos em mais de um módulo (**duplos**). Ao acrescentar peças ao
+modelo, é esse bloco que denuncia o que ficou por declarar; correr o script em STEPs
+antigos (v6_2, v6_3) dá ausentes e órfãos em vez de rebentar.
 | `validate_occ.py` | valida cada sólido com `BRepCheck_Analyzer` e dá volumes | `cadquery-ocp` |
 | `make_layout_svg.py` | desenho de implantação (vista de cima + lateral) em SVG | `cadquery-ocp` |
 

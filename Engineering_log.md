@@ -1175,3 +1175,40 @@ comando textual em percentagem (L:x R:y + newline)
 - Corrigir a lista `INSIDE` e o dicionário `MASS` do `verify_concept.py` para os nomes do v6_4, e voltar a correr as folgas e o CG.
 - Copiar o projeto KiCad para `hardware/electrical/kicad/` e commitar, antes de lhe mexer.
 - Correr o `heading_bench.py` no Pi com o BNO055, e calibrar já com o barco montado — o ferro e as correntes do barco distorcem o campo, e uma calibração feita com a placa na mão não vale para o barco montado.
+
+### 2026-07-30
+
+#### Trabalho realizado
+- `verify_concept.py` a correr outra vez no modelo corrente. A lista `INSIDE` e o dicionário `MASS`, ambos por nome de sólido, foram substituídos por uma tabela `MODULES` que mapeia módulo → sólidos → massa. A bounding box do módulo é a união das sub-peças e a massa aplica-se no centroide dessa união.
+- Acrescentado um bloco de integridade que corre antes das folgas e do CG e reporta as três direções de erro: sólidos sem módulo (órfãos), módulos cujos sólidos não existem no STEP (ausentes) e sólidos declarados em mais de um módulo (duplos). No v6_4 dá `87/87 mapeados, sem órfãos nem duplicados`.
+- **Folgas ao interior da caixa IP66 correram pela primeira vez no v6_4: os 11 módulos cabem todos.** Quatro estão a menos de 6 mm de uma parede — `gps_modulo` +Y 3,0 mm, `bateria_pi_2200` −X 3,0 mm, `distribuidor_fusiveis` +X 5,5 mm e `ads1015` +X 5,5 mm.
+- **CG recalculado no v6_4:** massa 11,63 kg, X = 469 mm (58,6 % do casco a contar da proa), Y = +0,7 mm, Z = 103 mm.
+- Servos do bocal orientável ganharam massa na tabela (0,012 kg por lado). Estavam no modelo desde o v6_4 e não estavam em massa nenhuma.
+- `tools/README.md` documenta o raciocínio por módulo e o bloco de integridade.
+
+#### Decisões técnicas
+- **A unidade de análise passa a ser o módulo e não o sólido.** A pergunta que as folgas respondem é "o Pi cabe na caixa?", não "o conector CSI cabe na caixa?". Com o módulo como unidade, detalhar mais o CAD deixa de invalidar o verificador: acrescentam-se sólidos à lista do módulo e o resultado físico não muda.
+- **Massa do waterjet distribuída pela união das sub-peças em vez de ficar no duto.** Os 0,35 kg por lado são do conjunto; deixá-los no `waterjet_dir` (X 735..793) punha o centroide a montante do jato real, que se estende até X 815.
+- Comprimento para a percentagem de CG passou a ser derivado da bounding box dos cascos em vez de `800` fixo no código. O envelope estende-se até 815 por causa do bocal, e a percentagem tem de ser do casco.
+- O bloco de integridade imprime sempre, mesmo quando está tudo bem. Um verificador que só fala quando falha não distingue "verificado e correto" de "não corri".
+
+#### Problemas / limitações
+- A massa dos servos é de catálogo para a classe SG90 (o corpo modelado é 23 × 12 × 18). Se o bocal exigir engrenagem metálica — provável, contra o impulso do jato — o número triplica. Fica anotado no próprio ficheiro.
+- Continua tudo estimado: nenhuma das 43 massas foi a uma balança. O CG e o calado mantêm o estatuto de "estimado".
+- As folgas verificam envelopes, não instalação: 3 mm de folga no GPS não deixam espaço para ficha, cabo nem dedo. Cabe no desenho e pode não caber na montagem.
+
+#### Resultado do dia
+- A verificação que estava parada há uma semana voltou a correr, e o modo de falha que a tornou inútil — dar resultados sobre metade das peças em silêncio — passou a ser impossível sem aviso no ecrã.
+- O CG do v6_4 (11,63 kg, X 469, Z 103) bate com o que tinha sido estimado no v6_2 (~11,6 kg, X 468, z_G ≈ 107). Detalhar o modelo não mexeu na distribuição de massa, que era a dúvida que justificava voltar a correr.
+
+#### Lições aprendidas
+- Um valor que confirma o anterior não é trabalho perdido: antes de hoje, "o CG é 468 mm" e "o CG não é verificado desde o v6_2" eram indistinguíveis. Reproduzir o número no modelo corrente é o que transforma um valor herdado em valor válido.
+- `dict.get(chave, 0)` é conveniente para ler e perigoso para verificar. Foi o `.get(k, 0.0)` do `MASS`, e não o `KeyError` do `INSIDE`, o erro mais grave dos dois: o `KeyError` gritou, o `.get` teria dado um CG errado com ar de certo.
+- A folga apertada aparece onde não se procura. Os quatro módulos a menos de 6 mm da parede não são os grandes — são o GPS, o ADS1015 e o distribuidor, precisamente as peças que "obviamente cabem".
+
+#### Próximo passo
+- Rever a implantação dentro da caixa para dar folga de montagem ao GPS (+Y 3 mm) e à bateria da eletrónica (−X 3 mm), contando com fichas e cabos e não só com o envelope.
+- Copiar o projeto KiCad para `hardware/electrical/kicad/` e commitar antes de lhe mexer.
+- Confirmar a declinação magnética na calculadora da NOAA para as coordenadas do ensaio. O WMM2025 dá ≈ −0,9° para Lisboa, e não os −2,1° que estão no `real_heading.py` como ordem de grandeza; a ~1° a declinação é ruído comparada com o erro de calibração do magnetómetro.
+- Bancada adiada por decisão: sem multímetro fiável não há verificação de continuidade, e soldar o BNO055 sem forma de confirmar que não há curto não se justifica. Solda, loop key, ESC, motor e multímetro passam a um único pacote, quando o ESC chegar.
+- Confirmar se o recetor ELRS escolhido precisa de emissora que ainda não existe — os 29,90 € do ER6 são metade da cadeia.
