@@ -19,6 +19,9 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
 ## Safety Design
 - Boot always in a safe (DISARMED) state; STOP has absolute priority
 - Two independent protection layers: Pi heartbeat + ESP32 failsafe-by-timeout
+- Propulsion latch: the failsafe does not merely stop the motors, it locks propulsion.
+  The lock only opens on an explicit `L: 0 R: 0`, so no path leads from "stopped by
+  failure" back to "running" without passing through zero
 - Firmware-enforced 30% power ceiling for bench testing
 - Manual power cut (XT90 loop key) required before any ESC/motor energisation; remote kill switch (2.4 GHz RC / LoRa) planned before autonomous operation
 
@@ -42,6 +45,9 @@ python3 software/raspberry_pi/tests/test_mixer.py
 python3 software/raspberry_pi/tests/test_navigation.py
 
 python3 software/raspberry_pi/tests/test_real_heading.py
+
+# ESP32 safety logic (runs on a PC, no board needed)
+g++ -std=c++11 -Wall -o /tmp/tms software/esp32/tests/test_motor_safety.cpp && /tmp/tms
 
 # main process (ESP32 over USB optional)
 python3 software/raspberry_pi/main.py               # DISARMED/ARMED only

@@ -238,6 +238,11 @@ def main(argv=None):
                     if state == DISARMED:
                         if link.is_open:
                             state = ARMED
+                            # O ESP32 arranca com a propulsao travada e volta a
+                            # travar sempre que o failsafe dispara. A trava so
+                            # abre com um comando de paragem, e armar e o
+                            # momento certo para o mandar: e um gesto humano.
+                            link.stop_motors()
                             last_hb = 0.0
                             log.log("STATE", state, "arm")
                             print(f"[STATE] {state}", flush=True)
@@ -258,6 +263,9 @@ def main(argv=None):
                         print("[WARN] Nao e possivel NAV sem ligacao serie", flush=True)
                     else:
                         state = NAV
+                        # abre a trava do ESP32 antes do primeiro comando de
+                        # propulsao (ver esp32/motor_safety.h)
+                        link.stop_motors()
                         # missao recomecada do inicio, a partir da posicao atual
                         nav = WaypointNav(MISSION_WAYPOINTS,
                                           arrival_radius_m=ARRIVAL_RADIUS_M)

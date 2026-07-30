@@ -1250,3 +1250,39 @@ comando textual em percentagem (L:x R:y + newline)
 - Latch de re-arme no ESP32, antes de ligar motores a sério.
 - STOP repetido até confirmação, e caminho de controlo que não dependa de terminal interativo.
 - Unificar o tecto de 30% num sítio só e passar a porta série para um caminho `by-id`.
+
+### 2026-07-30 (sessão 3 — trava de propulsão no ESP32)
+
+#### Trabalho realizado
+- **Corrigido o segundo dos quatro problemas: o ESP32 já não reinicia os motores sozinho.** O failsafe deixou de se limitar a parar e passa a **travar** a propulsão. A trava só abre com um comando de paragem explícito (`L: 0 R: 0`). Nenhum caminho leva de "parado por falha" a "a andar" sem passar por zero.
+- O sistema passa também a **arrancar travado**, e o watchdog nasce expirado (`lastCommandMs = now - TIMEOUT - 1`). Antes, com `millis()` a começar em zero e `lastCommandTime` a zero, o firmware passava o primeiro segundo a acreditar num comando que nunca chegou.
+- A lógica de segurança saiu do `.ino` para `software/esp32/motor_safety.h`, sem dependências do Arduino: tecto de 30 %, parsing do comando, failsafe por timeout e trava. O `.ino` ficou com o hardware — série, pinos, PWM.
+- Escritos 13 testes em `software/esp32/tests/test_motor_safety.cpp` (182 verificações) que correm num PC com `g++`, sem ESP32. **É a primeira vez que o firmware tem testes.**
+- `main.py` manda um `stop_motors()` ao entrar em ARMED e em NAV, que é o que abre a trava. Armar passa a ser o gesto humano que destranca a propulsão.
+- Parsing endurecido: `toInt()` da Arduino devolvia 0 perante lixo, o que era seguro mas mudo. Agora uma linha sem dígitos é recusada como malformada e dá mensagem própria. Saiu também o `String` do caminho crítico, que fragmentava a heap.
+
+#### Decisões técnicas
+- **A trava abre com o comando de paragem, não com um comando novo de re-arme.** Não obriga a mexer no protocolo, e o Pi já manda `0/0` como heartbeat em ARMED. É o mesmo princípio dos ESCs de aeromodelismo: o acelerador tem de voltar ao mínimo antes de rearmar. Um protocolo com menos verbos é um protocolo com menos maneiras de errar.
+- **Um comando travado não alimenta o watchdog.** Se um comando que não produz propulsão refrescasse o `lastCommandMs`, um Pi avariado a debitar 25 % mantinha o failsafe eternamente satisfeito sem nunca mover nada — e no instante em que a trava abrisse, arrancava. O watchdog vigia propulsão; só comandos que produzem propulsão o alimentam. Tem teste próprio.
+- **A lógica separada do hardware não é arrumação, é testabilidade.** Enquanto viveu dentro do `.ino`, a única forma de a verificar era gravar o ESP32 e ligar motores — ou seja, testar o failsafe com hélices a girar. É a mesma razão pela qual o `RealHeading` recebe o driver por parâmetro.
+- Mantido o `delay(20)` e o resto da estrutura do `.ino`. A refactorização era para separar a decisão da atuação, não para reescrever o que já funcionava.
+
+#### Problemas / limitações
+- **Os testes validam política, não hardware.** Que o PWM chegue mesmo aos ESCs só se verifica com osciloscópio ou com um motor na bancada. O que está provado é o que o firmware *decide*, não o que o pino *faz*.
+- O firmware novo nunca foi gravado num ESP32. Compila com `g++` na parte que não depende do Arduino; o `.ino` completo não foi compilado com o toolchain do ESP32.
+- Ficam dois dos quatro problemas da revisão: o STOP continua a ser um único `write()` best-effort, e sem terminal interativo não há ARM, STOP nem DISARM.
+- `SAFE_MAX` (Pi) e `PERCENT_MAX_SAFE` (ESP32) continuam a ser o mesmo número em dois sítios.
+
+#### Resultado do dia
+- O firmware que segura os ESCs passou a ter a mesma regra que o Pi já tinha — "o regresso da ligação nunca arma sozinho" — mas agora na camada que tem a autoridade.
+- 40 testes em Python e 13 em C++. O `.ino` deixou de ser a única parte do projeto sem forma de ser verificada.
+
+#### Lições aprendidas
+- Parar não é o mesmo que ficar parado. Um failsafe que só corta é reversível por acidente; para não o ser tem de deixar o sistema num estado que exija uma ação deliberada para sair. A diferença entre `stopMotors()` e `locked = true` é a diferença entre um travão e um travão de mão.
+- Código difícil de testar não é um problema de disciplina, é um problema de desenho. A lógica não tinha testes porque estava presa ao hardware; assim que se separou, os testes escreveram-se em meia hora.
+- Um valor por omissão silencioso esconde-se bem: o `toInt()` a devolver 0 falhava para o lado seguro, e por isso ninguém repara que está a falhar. Seguro e mudo ainda é mudo.
+
+#### Próximo passo
+- STOP repetido até confirmação e caminho de controlo sem terminal interativo — os dois que faltam da revisão.
+- Unificar o tecto de 30 % num sítio só; porta série por `by-id`.
+- Compilar o `.ino` com o toolchain do ESP32 antes de gravar.

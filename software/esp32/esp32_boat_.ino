@@ -1,4 +1,17 @@
+// SAILSAFE - controlo dos ESCs no ESP32.
+//
+// Este ficheiro trata do HARDWARE: serie, pinos, sinal PWM. Toda a decisao
+// de seguranca (tecto de 30%, failsafe por timeout, trava de re-arme) esta
+// em motor_safety.h, que nao depende do Arduino e e testado com g++ em
+// software/esp32/tests/.
+//
+// Protocolo: "L: <0-30> R: <0-30>\n"
+// O sistema arranca TRAVADO. Ate receber "L: 0 R: 0" nao ha propulsao.
+
 #include <ESP32Servo.h>
+#include "motor_safety.h"
+
+using namespace sailsafe;
 
 Servo escLeft;
 Servo escRight;
@@ -6,23 +19,11 @@ Servo escRight;
 const int LEFT_ESC_PIN = 18;
 const int RIGHT_ESC_PIN = 19;
 
-const int PWM_STOP = 1000;
-const int PWM_MIN = 1000;
-const int PWM_MAX = 2000;
-
-const int PERCENT_MIN = 0;
-const int PERCENT_MAX_SAFE = 30;
-
-unsigned long lastCommandTime = 0;
-const unsigned long FAILSAFE_TIMEOUT_MS = 1000;
-
-bool failsafeActive = false;
-
-int leftPWM = PWM_STOP;
-int rightPWM = PWM_STOP;
+MotorSafety safety;
 
 static char serialBuffer[64];
 static int bufferIndex = 0;
+static bool avisoTravaImpresso = false;
 
 void setup() {
   Serial.begin(115200);
@@ -31,33 +32,35 @@ void setup() {
   escLeft.setPeriodHertz(50);
   escRight.setPeriodHertz(50);
 
-  escLeft.attach(LEFT_ESC_PIN, PWM_MIN, PWM_MAX);
-  escRight.attach(RIGHT_ESC_PIN, PWM_MIN, PWM_MAX);
+  escLeft.attach(LEFT_ESC_PIN, PWM_STOP, PWM_MAX);
+  escRight.attach(RIGHT_ESC_PIN, PWM_STOP, PWM_MAX);
 
-  stopMotors();
+  safety.begin(millis());
+  aplicarPWM();
 
   Serial.println("ESP32 motor controller iniciado");
-  Serial.println("Modo: percentagem");
-  Serial.println("Formato: L:10 R:10");
-  Serial.println("Terminar comando com \\n");
+  Serial.println("Formato: L: 10 R: 10   (terminar com \\n)");
   Serial.println("Limite seguro atual: 0% a 30%");
+  Serial.println("PROPULSAO TRAVADA no arranque - enviar 'L: 0 R: 0' para destravar");
 }
 
 void loop() {
   readSerialNonBlocking();
 
-  if (millis() - lastCommandTime > FAILSAFE_TIMEOUT_MS) {
-    if (!failsafeActive) {
-      Serial.println("FAILSAFE ATIVO - motores parados");
-      failsafeActive = true;
-    }
-    stopMotors();
+  if (safety.tick(millis())) {
+    Serial.println("FAILSAFE ATIVO - motores parados e propulsao TRAVADA");
+    Serial.println("Enviar 'L: 0 R: 0' para destravar");
+    avisoTravaImpresso = false;
   }
 
-  escLeft.writeMicroseconds(leftPWM);
-  escRight.writeMicroseconds(rightPWM);
+  aplicarPWM();
 
   delay(20);
+}
+
+void aplicarPWM() {
+  escLeft.writeMicroseconds(safety.leftPWM);
+  escRight.writeMicroseconds(safety.rightPWM);
 }
 
 void readSerialNonBlocking() {
@@ -68,8 +71,7 @@ void readSerialNonBlocking() {
       serialBuffer[bufferIndex] = '\0';
       processCommand(serialBuffer);
       bufferIndex = 0;
-    }
-    else {
+    } else {
       if (bufferIndex < 63) {
         serialBuffer[bufferIndex++] = c;
       }
@@ -78,54 +80,36 @@ void readSerialNonBlocking() {
 }
 
 void processCommand(char *cmd) {
-  String s = String(cmd);
-  s.trim();
+  CmdResult r = safety.handleLine(cmd, millis());
 
-  int lIndex = s.indexOf("L:");
-  int rIndex = s.indexOf("R:");
+  switch (r) {
+    case CMD_MALFORMED:
+      Serial.println("COMANDO INVALIDO - motores parados");
+      break;
 
-  if (lIndex == -1 || rIndex == -1 || rIndex <= lIndex) {
-    Serial.println("COMANDO INVALIDO - motores parados");
-    stopMotors();
-    return;
+    case CMD_OUT_OF_RANGE:
+      Serial.println("VALOR FORA DO LIMITE SEGURO - motores parados");
+      break;
+
+    case CMD_LOCKED:
+      // Nao inunda a consola: o Pi manda comandos a 5 Hz.
+      if (!avisoTravaImpresso) {
+        Serial.println("PROPULSAO TRAVADA - ignorado. Enviar 'L: 0 R: 0' para destravar");
+        avisoTravaImpresso = true;
+      }
+      break;
+
+    case CMD_IDLE:
+      Serial.println("Parado. Propulsao DESTRAVADA");
+      avisoTravaImpresso = false;
+      break;
+
+    case CMD_OK:
+      Serial.print("Left: ");
+      Serial.print(safety.leftPWM);
+      Serial.print(" us | Right: ");
+      Serial.print(safety.rightPWM);
+      Serial.println(" us");
+      break;
   }
-
-  int lValue = s.substring(lIndex + 2, rIndex).toInt();
-  int rValue = s.substring(rIndex + 2).toInt();
-
-  if (lValue < PERCENT_MIN || lValue > PERCENT_MAX_SAFE ||
-      rValue < PERCENT_MIN || rValue > PERCENT_MAX_SAFE) {
-
-    Serial.println("VALOR FORA DO LIMITE SEGURO - motores parados");
-    stopMotors();
-    return;
-  }
-
-  leftPWM = percentToPWM(lValue);
-  rightPWM = percentToPWM(rValue);
-
-  lastCommandTime = millis();
-  failsafeActive = false;
-
-  Serial.print("Left: ");
-  Serial.print(lValue);
-  Serial.print("% -> ");
-  Serial.print(leftPWM);
-  Serial.print(" us | Right: ");
-  Serial.print(rValue);
-  Serial.print("% -> ");
-  Serial.print(rightPWM);
-  Serial.println(" us");
-}
-
-int percentToPWM(int percent) {
-  return map(percent, 0, 100, PWM_STOP, PWM_MAX);
-}
-
-void stopMotors() {
-  leftPWM = PWM_STOP;
-  rightPWM = PWM_STOP;
-
-  escLeft.writeMicroseconds(PWM_STOP);
-  escRight.writeMicroseconds(PWM_STOP);
 }
