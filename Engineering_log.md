@@ -1286,3 +1286,33 @@ comando textual em percentagem (L:x R:y + newline)
 - STOP repetido até confirmação e caminho de controlo sem terminal interativo — os dois que faltam da revisão.
 - Unificar o tecto de 30 % num sítio só; porta série por `by-id`.
 - Compilar o `.ino` com o toolchain do ESP32 antes de gravar.
+
+### 2026-07-30 (sessão 4 — leitura crítica do código de segurança)
+
+#### Trabalho realizado
+- Passagem de leitura sobre quatro ficheiros do caminho de segurança, sem alterar código: `control/mixer.py`, `control/heading.py`, `esp32/motor_safety.h` e `esp32/tests/test_motor_safety.cpp`.
+- Confirmada linha a linha a ordem das verificações do `handleLine()`: limites primeiro, depois o comando de paragem que abre a trava, depois a trava, e só no fim a obediência. A ordem é o desenho de segurança e não uma sequência arbitrária.
+- Reconstruída e verificada a aritmética sem sinal do `lastCommandMs`: a volta ao contador acontece duas vezes, na subtração que se guarda e na que se verifica, e cancela-se. O valor intermédio é grande e nunca é lido por ninguém — a variável só aparece dentro de uma diferença.
+
+#### Decisões técnicas
+- **Um defeito real e inatingível documenta-se, não se corrige.** A aritmética do `millis()` deixa de dar a diferença certa ao fim de 49 dias de alimentação contínua. Com 1,9 h de autonomia da bateria da eletrónica, são cerca de 600 vezes mais do que o alcançável. Acrescentar código para o tratar poria instruções novas — logo, defeitos possíveis novos — no caminho crítico do failsafe, para resolver uma situação que não ocorre. Fica registado o limite e o código fica como está.
+- Mantida a separação entre o que os testes provam e o que não provam. Os 182 verificações do `test_motor_safety.cpp` validam a **política** — que decisão o firmware toma perante cada comando e perante o silêncio. Não dizem nada sobre o sinal chegar ao pino, o ESC entender o sinal ou o motor rodar. A frase "está testado" não deve ser lida como mais do que isto na bancada de domingo.
+- Registada a razão de desenho de duas escolhas que não são óbvias na leitura: o `parseValue()` recebe `long *out` porque tem de devolver duas informações independentes — se conseguiu ler e o que leu — e é isso que distingue um comando ilegível de um pedido legítimo de paragem; e o `tick()` recebe o instante por parâmetro em vez de chamar o `millis()`, que é o que torna possível testar um timeout de 1 s e a volta dos 49 dias sem esperar nem 1 s nem 49 dias.
+
+#### Problemas / limitações
+- Leitura não é ensaio. Nenhuma das conclusões desta sessão foi confirmada em hardware.
+- Os dois defeitos por corrigir da revisão anterior continuam por corrigir: o STOP é um único `write()` sem confirmação nem repetição, e sem terminal interativo não há ARM, STOP nem DISARM.
+- O `.ino` completo continua sem ter sido compilado com o toolchain do ESP32; só a parte independente do Arduino compila com `g++`.
+
+#### Resultado do dia
+- A cadeia de segurança está lida de ponta a ponta, com as razões de desenho de cada verificação escritas em vez de implícitas.
+- O limite dos 49 dias passou de propriedade desconhecida a limitação conhecida, quantificada e deliberadamente não corrigida.
+
+#### Lições aprendidas
+- Ler os testes é a via mais rápida para saber o que um módulo promete. O ficheiro diz *como*; os nomes dos testes dizem *o quê*, e lidos em sequência são a lista de garantias.
+- O que entra por parâmetro pode ser fingido no ensaio; o que a função vai buscar sozinha, não. Vale para o relógio do `tick()` e para o driver do `RealHeading`, e é o critério que decide se um módulo é testável antes de existir hardware.
+- Um valor intermédio absurdo não é necessariamente um erro. O `lastCommandMs` fica com um número enorme no arranque e está certo, porque nunca é lido isolado — só como extremo de uma diferença.
+
+#### Próximo passo
+- Corrigir os dois defeitos que faltam da revisão da cadeia de segurança.
+- Compilar o `.ino` com o toolchain do ESP32 antes de gravar.
