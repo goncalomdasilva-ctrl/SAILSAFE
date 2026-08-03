@@ -15,20 +15,25 @@ Maquina de estados: DISARMED <-> ARMED / NAV.
 - O regresso da ligacao serie nunca arma sozinho.
 - Fontes sinteticas NUNCA comandam motores sem ser pedido na linha de
   comandos. Ver nav_guard() e os modos --sim / --sim-motores.
+- O STOP e repetido ate o ESP32 confirmar; nao confirmar e ruidoso e fica
+  no log. Ver communication/serial_link.py.
+- ARMAR exige confirmacao de que a trava do ESP32 abriu. Sem prova de que
+  a propulsao esta destravada, o sistema fica DISARMED.
+- O controlo nao depende de terminal: FIFO e SIGUSR1 funcionam debaixo de
+  systemd ou nohup. Ver commands.py.
 
 Regista a sessao em CSV via telemetry.SessionLogger.
-Teclas (terminal): a=ARM  n=NAV  d=DISARM  s=STOP  q=sair
+Comandos: a=ARM  n=NAV  d=DISARM  s=STOP  q=sair
+  terminal (se houver tty)  |  echo s > FIFO  |  kill -USR1 <pid> (STOP)
 """
 
 import argparse
+import os
 import signal
-import sys
-import select
-import termios
-import tty
 import time
 from collections import namedtuple
 
+from commands import CommandBus, DEFAULT_FIFO
 from communication.serial_link import SerialLink
 from telemetry.logger import SessionLogger
 from control.heading import HeadingController
@@ -60,31 +65,41 @@ def shutdown(signum, frame):
     running = False
 
 
-class KeyReader:
-    """Le teclas isoladas do terminal sem bloquear e sem Enter."""
-
-    def __init__(self):
-        self.fd = sys.stdin.fileno()
-        self.enabled = sys.stdin.isatty()
-        self.old = None
-
-    def __enter__(self):
-        if self.enabled:
-            self.old = termios.tcgetattr(self.fd)
-            tty.setcbreak(self.fd)
-        return self
-
-    def __exit__(self, *a):
-        if self.enabled and self.old:
-            termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
-
-    def get(self):
-        if self.enabled and select.select([sys.stdin], [], [], 0)[0]:
-            return sys.stdin.read(1).lower()
-        return None
-
-
 NavStep = namedtuple("NavStep", "left right bearing dist done lat lon")
+
+
+def stop_confirmado(link, log, state, motivo):
+    """Manda parar, regista o resultado e diz alto se nao foi confirmado.
+
+    Devolve o StopResult. Um StopResult so e verdadeiro quando confirmado,
+    portanto `if stop_confirmado(...)` ja e a leitura conservadora.
+
+    Nao confirmar nao e "os motores continuam a andar": e "nao sabemos se
+    o comando chegou, e o failsafe do ESP32 trava a propulsao dentro de
+    1 s". A diferenca entre as duas leituras passa a estar no log em vez
+    de ficar por adivinhar.
+
+    Sem porta aberta nao ha alarme nenhum. Um STOP sem serie nao falhou:
+    nunca houve caminho para a propulsao, portanto nao ha nada a parar.
+    Gritar aqui seria gritar em todas as sessoes de simulacao sem ESP32 --
+    e um alarme que dispara quando nao esta nada em jogo e um alarme que
+    se aprende a ignorar, o que o torna pior do que nao existir.
+    """
+    havia_porta = link.is_open
+    r = link.stop_motors()
+    for linha in r.lines:
+        print(f"[RX] {linha}", flush=True)
+        log.log("RX", state, linha)
+    if r.confirmed:
+        log.log("STOP", state, f"{motivo}: confirmado ({r.attempts} tent.)")
+    elif not havia_porta:
+        log.log("STOP", state, f"{motivo}: sem serie, nada para parar")
+    else:
+        log.log("ALERTA", state, f"{motivo}: STOP NAO confirmado - {r.reason}")
+        print(f"[ALERTA] STOP nao confirmado pelo ESP32 ({r.reason}).", flush=True)
+        print("[ALERTA] O failsafe trava a propulsao ~1 s apos o ultimo "
+              "comando. Cortar a alimentacao se houver duvida.", flush=True)
+    return r
 
 # --- guarda do modo NAV -------------------------------------------------
 # O nav_step() fecha a malha no SimulatedBoat: le a posicao dele, calcula
@@ -166,6 +181,11 @@ def parse_args(argv=None):
     p.add_argument("--sim-motores", action="store_true", dest="sim_motores",
                    help="PERIGO: NAV com fontes sinteticas a comandar mesmo os "
                         "motores. So com o barco preso na bancada.")
+    p.add_argument("--control-fifo", default=DEFAULT_FIFO, dest="control_fifo",
+                   help=f"FIFO de comandos (por omissao {DEFAULT_FIFO}). "
+                        "Vazio desliga o FIFO.")
+    p.add_argument("--no-tty", action="store_true", dest="no_tty",
+                   help="ignora o teclado mesmo havendo terminal")
     return p.parse_args(argv)
 
 
@@ -176,11 +196,11 @@ def main(argv=None):
 
     log = SessionLogger()
     print("[INFO] SAILSAFE iniciado", flush=True)
+    print(f"[INFO] PID {os.getpid()}", flush=True)
     print(f"[INFO] Log da sessao: {log.path}", flush=True)
     state = DISARMED
-    log.log("BOOT", state, "")
+    log.log("BOOT", state, f"pid={os.getpid()}")
     print(f"[STATE] {state}", flush=True)
-    print("[INFO] Teclas: a=ARM  n=NAV  d=DISARM  s=STOP  q=sair", flush=True)
 
     link = SerialLink()
     if link.connect():
@@ -220,32 +240,57 @@ def main(argv=None):
         print("[AVISO] O barco fisico nao sabe onde esta. So com ele preso "
               "e fora de agua.", flush=True)
 
-    with KeyReader() as keys:
+    with CommandBus(fifo_path=args.control_fifo,
+                    use_tty=not args.no_tty) as bus:
+        print("[INFO] Caminhos de comando:", flush=True)
+        for linha in bus.describe():
+            print(linha, flush=True)
+        log.log("CONTROL", state,
+                "|".join(s.name for s in bus.active) or "nenhum")
+        if not bus.can_command():
+            print("[AVISO] Sem caminho para ARM/NAV/DISARM: so ha STOP por "
+                  "sinal. O processo corre e nao arma.", flush=True)
+        if not bus.can_stop():
+            # Nao deve acontecer -- o sinal so falha fora da thread
+            # principal -- mas se acontecer nao se arma nada.
+            print("[ALERTA] Sem caminho de STOP. Nao usar com motores.", flush=True)
+
         try:
             while running:
                 now = time.monotonic()
 
-                k = keys.get()
+                k = bus.get()
                 if k == "q":
                     break
                 elif k == "s":
+                    # STOP tem prioridade absoluta: o estado passa a
+                    # DISARMED aconteca o que acontecer a confirmacao. Uma
+                    # paragem que so vale se o ESP32 responder nao e uma
+                    # paragem, e um pedido.
                     state = DISARMED
-                    link.stop_motors()
-                    log.log("STOP", state, "")
+                    stop_confirmado(link, log, state, "stop")
                     print("[STOP] STOP -> DISARMED", flush=True)
                     print(f"[STATE] {state}", flush=True)
                 elif k == "a":
                     if state == DISARMED:
                         if link.is_open:
-                            state = ARMED
                             # O ESP32 arranca com a propulsao travada e volta a
                             # travar sempre que o failsafe dispara. A trava so
                             # abre com um comando de paragem, e armar e o
                             # momento certo para o mandar: e um gesto humano.
-                            link.stop_motors()
-                            last_hb = 0.0
-                            log.log("STATE", state, "arm")
-                            print(f"[STATE] {state}", flush=True)
+                            #
+                            # Armar sem confirmacao seria anunciar ARMED sem
+                            # saber se a trava abriu -- e o operador ficava a
+                            # acreditar num estado que o firmware nao tem.
+                            if stop_confirmado(link, log, state, "arm"):
+                                state = ARMED
+                                last_hb = 0.0
+                                log.log("STATE", state, "arm")
+                                print(f"[STATE] {state}", flush=True)
+                            else:
+                                print("[WARN] ARM recusado: a trava do ESP32 "
+                                      "nao confirmou abertura", flush=True)
+                                log.log("WARN", state, "arm recusado: trava nao confirmada")
                         else:
                             print("[WARN] Nao e possivel ARM sem ligacao serie", flush=True)
                             log.log("WARN", state, "arm sem serie")
@@ -262,23 +307,29 @@ def main(argv=None):
                     elif precisa_serie and not link.is_open:
                         print("[WARN] Nao e possivel NAV sem ligacao serie", flush=True)
                     else:
-                        state = NAV
-                        # abre a trava do ESP32 antes do primeiro comando de
-                        # propulsao (ver esp32/motor_safety.h)
-                        link.stop_motors()
-                        # missao recomecada do inicio, a partir da posicao atual
-                        nav = WaypointNav(MISSION_WAYPOINTS,
-                                          arrival_radius_m=ARRIVAL_RADIUS_M)
-                        ctrl.clear_target()
-                        last_hb = 0.0
-                        log.log("STATE", state,
-                                f"missao {len(MISSION_WAYPOINTS)} wp ({nav_mode})")
-                        print(f"[STATE] {state} (navegacao por waypoints, "
-                              f"{len(MISSION_WAYPOINTS)} wp, {nav_mode})", flush=True)
+                        # Com propulsao em jogo, a trava tem de confirmar
+                        # abertura antes de a missao comecar -- mesma regra
+                        # do ARM. Em simulacao sem motores nao ha trava
+                        # nenhuma para abrir.
+                        if precisa_serie and not stop_confirmado(link, log, state, "nav"):
+                            print("[WARN] NAV recusado: a trava do ESP32 nao "
+                                  "confirmou abertura", flush=True)
+                            log.log("WARN", state, "nav recusado: trava nao confirmada")
+                        else:
+                            state = NAV
+                            # missao recomecada do inicio, a partir da posicao atual
+                            nav = WaypointNav(MISSION_WAYPOINTS,
+                                              arrival_radius_m=ARRIVAL_RADIUS_M)
+                            ctrl.clear_target()
+                            last_hb = 0.0
+                            log.log("STATE", state,
+                                    f"missao {len(MISSION_WAYPOINTS)} wp ({nav_mode})")
+                            print(f"[STATE] {state} (navegacao por waypoints, "
+                                  f"{len(MISSION_WAYPOINTS)} wp, {nav_mode})", flush=True)
                 elif k == "d":
                     if state != DISARMED:
                         state = DISARMED
-                        link.stop_motors()
+                        stop_confirmado(link, log, state, "disarm")
                         log.log("STATE", state, "disarm")
                         print(f"[STATE] {state}", flush=True)
 
@@ -307,8 +358,8 @@ def main(argv=None):
                     step = nav_step(nav, ctrl, boat)
                     if step.done:
                         # missao cumprida: parar e regressar ao estado seguro
-                        link.stop_motors()
                         state = DISARMED
+                        stop_confirmado(link, log, state, "fim de missao")
                         log.log("NAV", state, "missao concluida")
                         print("[NAV] Missao concluida -> DISARMED", flush=True)
                         print(f"[STATE] {state}", flush=True)

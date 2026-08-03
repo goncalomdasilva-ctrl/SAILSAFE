@@ -1316,3 +1316,197 @@ comando textual em percentagem (L:x R:y + newline)
 #### Próximo passo
 - Corrigir os dois defeitos que faltam da revisão da cadeia de segurança.
 - Compilar o `.ino` com o toolchain do ESP32 antes de gravar.
+
+### 2026-07-31 a 2026-08-03 (site — registo em atraso)
+
+Quatro dias sem entrada no log. O trabalho foi todo no palco 3D do site e está
+descrito ao pormenor na mensagem do commit `a71007a`, que fica a valer como
+registo: desempenho (ondulação da água iterada só dentro do disco afetado e
+normal obtida da derivada analítica em vez de `computeVertexNormals()` sobre
+24 200 triângulos por frame, ~18× menos CPU; renderers WebGL pausados fora do
+ecrã; duas panorâmicas de 4,26 MB que eram transferidas e enviadas para a GPU
+sem nunca aparecerem), enquadramento (barco ao centro, câmara 20% mais
+afastada) e contraste (corpo de 2,0:1 para 6,1–12:1, títulos para 7,9–15,6:1).
+
+Fica a nota de processo: nenhum destes números estava escrito em lado nenhum
+até hoje, e a razão por que se mediram — o palco no telemóvel ficava ilegível
+e a arrastar — não está escrita em sítio nenhum. O log serve para isso e
+esteve quatro dias parado.
+
+### 2026-08-04 (sessão 1 — STOP confirmado e controlo sem terminal)
+
+Fecham-se os dois defeitos que restavam da revisão da cadeia de segurança de
+07-30. Sessão sem hardware nenhum à frente: o barco só volta a estar acessível
+quinta-feira à tarde, e ambos os defeitos são de política, testáveis num PC.
+
+#### Trabalho realizado
+- **O STOP deixou de ser um `write()` best-effort.** O `stop_motors()` repete
+  até o ESP32 confirmar e devolve um `StopResult` com o que foi enviado, o que
+  foi confirmado, quantas tentativas e as linhas lidas pelo caminho. A
+  confirmação já existia no protocolo sem estar a ser usada: perante
+  `L: 0 R: 0` o firmware responde sempre `Parado. Propulsao DESTRAVADA`
+  (`CMD_IDLE`), e é o único comando com essa resposta.
+- **O buffer é drenado antes de enviar o STOP.** Sem isto a confirmação era
+  falsa: em ARMED o Pi manda 0/0 a 5 Hz e o ESP32 responde a cada um, portanto
+  há sempre acks por ler, e um STOP que nunca chegasse ao ESP32 seria
+  "confirmado" pelo eco de um comando anterior — precisamente o modo de falha
+  que a confirmação existe para apanhar. Tem teste próprio.
+- **ARM e NAV passam a exigir prova de que a trava abriu.** Já mandavam
+  `stop_motors()` para a destrancar; agora leem o resultado, e sem confirmação
+  o sistema fica DISARMED com o motivo escrito.
+- **`commands.py` novo: três caminhos de comando, nenhum deles o terminal.**
+  `KeyReader` (tty, como antes), `FifoControl` (`echo s > /tmp/sailsafe.ctl`) e
+  `SignalStop` (SIGUSR1 → STOP). O `CommandBus` junta-os, consulta-os por
+  ordem de prioridade e imprime no arranque o PID e os caminhos que estão mesmo
+  disponíveis.
+- 44 testes novos: 20 em `tests/test_stop_confirmado.py` e 24 em
+  `tests/test_commands.py`. **Total: 84 testes em Python e 182 verificações em
+  C++, nenhum a precisar de hardware.**
+- Ensaio ponta a ponta na configuração do defeito: `main.py --sim` com
+  `stdin` em `/dev/null`, NAV comandado pelo FIFO, STOP entregue por
+  `kill -USR1`, saída pelo FIFO. Funcionou e não deu um único alarme falso.
+- README atualizado com os três caminhos de comando e as duas garantias novas.
+- **`software/esp32/tools/syntax_check.sh`: o `.ino` passa a ser compilado por
+  alguma coisa.** Compila-o como C++ contra cabeçalhos falsos do Arduino e do
+  ESP32Servo (`tools/stub/`), com `-Wall -Wextra -Wshadow`. Passa sem um único
+  aviso. Não substitui o `arduino-cli` — ver limitações — mas fecha o buraco de
+  o ficheiro que segura os ESCs não passar por compilador nenhum entre sessões
+  de bancada.
+- **`esp32_boat_.ino` renomeado para `esp32.ino`.** O Arduino exige que o sketch
+  principal tenha exatamente o mesmo nome da pasta que o contém; com o nome
+  antigo, o `arduino-cli compile` responde *"main file missing from sketch"*.
+  O firmware nunca teria compilado por linha de comandos — só aberto à mão no
+  IDE, que é precisamente a razão por que isto nunca deu erro a ninguém.
+  Descoberto ao preparar o comando para a compilação de quinta, antes de ele
+  ser preciso.
+- **O `.ino` compila com o toolchain a sério.** `arduino-cli compile --fqbn
+  esp32:esp32:esp32 software/esp32`: 285 267 bytes de flash (21% de 1 310 720)
+  e 22 648 bytes de RAM estática (6% de 327 680), o que deixa 305 kB para
+  variáveis locais. **É a primeira vez que o firmware é compilado por um
+  processo automático e não à mão no IDE.** Confirma também, uma vez, que os
+  cabeçalhos falsos do `syntax_check.sh` não divergem da API real do
+  ESP32Servo — o risco que estava escrito como limitação.
+
+#### Decisões técnicas
+- **O orçamento do STOP cabe dentro do timeout do failsafe, de propósito.**
+  3 tentativas × 80 ms = 240 ms no pior caso, contra os 1000 ms do
+  `FAILSAFE_TIMEOUT_MS`. Se o STOP demorasse mais, o failsafe disparava
+  enquanto o Pi ainda estava a tentar, e o resultado do STOP chegava depois de
+  a decisão já ter sido tomada noutra camada. Assim as duas proteções
+  encadeiam-se em vez de competirem. Há um teste que verifica a desigualdade,
+  para a relação não se perder quando alguém mexer num dos números.
+- **`StopResult` é uma classe com `__bool__`, e não um namedtuple.** Um
+  namedtuple é sempre verdadeiro, portanto qualquer `if link.stop_motors():`
+  futuro passaria a ler sempre "correu bem" — a dúvida convertia-se em sucesso
+  silencioso. Com `__bool__` a devolver `confirmed`, quem escrever o teste
+  óbvio fica com o ramo conservador sem ter de saber que existe um campo.
+- **Uma escrita que rebenta não é repetida.** O `send_motors()` já fecha a
+  porta nesse caso; sem porta não há caminho, e insistir só gasta o orçamento.
+  A proteção nesse ramo é o failsafe do ESP32, e isso está escrito no `reason`
+  em vez de ficar implícito.
+- **O `close()` mantém o `write()` único sem confirmação**, também de
+  propósito: estamos a fechar a porta a seguir, não há caminho para ler
+  resposta nenhuma. Uniformizar aqui seria fingir uma garantia inexistente.
+- **O STOP nunca é bloqueado pela falta de confirmação.** A tecla `s` põe o
+  estado em DISARMED aconteça o que acontecer ao ack. Uma paragem que só vale
+  se o outro lado responder não é uma paragem, é um pedido.
+- **Só o caminho mais pobre é que não pode faltar, e é esse que carrega o
+  STOP.** O tty depende de haver terminal; o FIFO depende de permissões e do
+  sistema de ficheiros; um sinal não depende de nada — enquanto o processo
+  existir, `kill -USR1` chega-lhe. A assimetria é o desenho: as funções que
+  ARMAM podem faltar, e isso é inofensivo porque um barco que não arma fica
+  quieto; a função que PARA está sempre lá.
+- **O `FifoControl` segura o próprio descritor de escrita.** Sem isso, o
+  instante em que o primeiro `echo` termina fecharia o FIFO em EOF e todos os
+  comandos seguintes — incluindo o STOP — desapareciam em silêncio. É o
+  primeiro teste que escrevi e o que mais perto esteve de passar despercebido.
+- **O handler do sinal só põe uma flag.** Um handler pode interromper qualquer
+  linha do programa; as únicas operações seguras lá dentro são as que não podem
+  ficar a meio. Nada de `print`, de log ou de série.
+- **O alarme de STOP não confirmado só toca com a porta aberta.** Sem série
+  nunca houve caminho para a propulsão, logo não há nada para parar e o STOP
+  não falhou. Gritar aí enchia de `[ALERTA]` todas as sessões de simulação sem
+  ESP32 — que são quase todas, nesta fase.
+- O relógio e a espera entram no `stop_motors()` por parâmetro, o que torna os
+  testes de timeout instantâneos. É a mesma razão pela qual o `tick()` do
+  `motor_safety.h` recebe o instante em vez de chamar o `millis()`.
+
+#### Problemas / limitações
+- **Nada disto viu um ESP32.** O ack está tirado da leitura do
+  `esp32_boat_.ino`, não de o ter observado a chegar pela série. Se o firmware
+  gravado na placa for anterior à separação do `motor_safety.h`, a resposta
+  pode ser outra e a confirmação nunca chega — o que, pelo menos, falha para o
+  lado ruidoso: o ARM é recusado em vez de o barco armar sem trava aberta.
+  **É a primeira coisa a confirmar na bancada de quinta.**
+- **O firmware é verboso no caminho quente.** Como o ESP32 responde a cada
+  heartbeat, em ARMED a consola e o CSV recebem uma linha 5×/s. A drenagem do
+  STOP absorve isso, mas o problema de fundo — imprimir no caminho crítico —
+  fica por resolver e vai encher o log de sessão na bancada.
+- O STOP bloqueia o loop até 240 ms no pior caso. Em DISARMED é irrelevante;
+  convém ver na bancada se atrasa o heartbeat de forma visível.
+- O FIFO fica com permissões `0600`: só o mesmo utilizador comanda. Se o
+  serviço vier a correr como `root` e o operador for o `pi`, o caminho não
+  serve — decidir isso quando houver unit de systemd, não antes.
+- **O FIFO não tem autenticação nenhuma:** quem tiver acesso ao ficheiro
+  comanda o barco. Aceitável enquanto isto for local; deixa de o ser no
+  instante em que houver controlo por rede.
+- **O `syntax_check.sh` prova menos do que parece.** As assinaturas em
+  `tools/stub/ESP32Servo.h` foram escritas a partir do uso que o `.ino` faz da
+  biblioteca, não lidas da ESP32Servo instalada: se a API real mudar, o check
+  passa e o build a sério falha. Hoje coincidem — o `arduino-cli` compilou —
+  mas isso é uma verificação pontual, não uma garantia mantida. Também não diz
+  nada sobre versões do core, macros da Espressif ou o compilador xtensa.
+  Apanha erros de escrita, e é só isso que promete.
+- O `.ino` depende dos protótipos que o builder do Arduino gera sozinho — o
+  `setup()` chama o `aplicarPWM()` 30 linhas antes de ele existir. O script
+  gera-os à mão para reproduzir o comportamento. Funciona, mas é uma
+  dependência do pré-processador do Arduino que fica escrita em dois sítios;
+  se o ficheiro passar a `.cpp`, os protótipos têm de ir para dentro dele.
+- Compilar não é gravar: o binário nunca foi para uma placa e o
+  comportamento em hardware continua por observar.
+- Continuam por fazer: unificar o teto de 30% (`SAFE_MAX` no Pi e
+  `PERCENT_MAX_SAFE` no ESP32 continuam a ser o mesmo número em dois sítios) e
+  a porta série por `by-id`.
+
+#### Resultado do dia
+- **Os quatro problemas da revisão de 07-30 estão fechados.** O NAV já não
+  comanda motores a partir de um barco imaginário (sessão 2), o ESP32 já não
+  rearma sozinho (sessão 3), o STOP já não é um tiro no escuro e o controlo já
+  não desaparece sem terminal (hoje).
+- O processo passa a ser comandável na configuração em que vai mesmo correr no
+  barco — sem teclado, sem terminal, arrancado por um serviço.
+
+#### Lições aprendidas
+- **Uma confirmação que pode ser um resto não é uma confirmação.** A parte
+  difícil não foi ler o ack; foi perceber que havia sempre acks antigos à
+  espera e que aceitá-los era pior do que não confirmar de todo — dava a
+  garantia sem o facto, que é a única coisa mais perigosa do que não ter
+  garantia nenhuma.
+- **Disponibilidade e funcionalidade de um canal são independentes, e para
+  segurança a primeira vale mais.** O canal com menos capacidade do sistema —
+  um bit, sem argumentos, sem resposta — é o que leva o comando mais
+  importante, porque é o único que não pode estar em falta.
+- **Um alarme que dispara quando não está nada em jogo é pior do que não
+  existir**, porque ensina o operador a ignorá-lo, e o dia em que ele importa é
+  igual a todos os outros.
+- **Um valor de retorno que ninguém lê é o mesmo que não devolver nada.** O
+  `stop_motors()` devolvia `True`/`False` desde o primeiro dia. A informação
+  estava lá; o defeito era ninguém a consultar. Vale a pena procurar os outros
+  sítios do projeto onde já se devolve o que não se lê.
+- **Uma ferramenta que só se usa à mão esconde os defeitos que só uma
+  ferramenta automática apanha.** O `.ino` tinha o nome errado desde sempre e
+  nunca deu erro, porque abrir um sketch no IDE não valida a convenção que o
+  `arduino-cli` exige. O defeito não estava no ficheiro: estava em ele nunca
+  ter sido submetido a nada que o pudesse recusar.
+
+#### Próximo passo
+- **Encomendar o multímetro.** Passa a ser o único bloqueio da bancada de
+  quinta com prazo de entrega: o ESC já existe, o firmware já compila, faltam
+  a loop key e a forma de verificar continuidade antes de soldar.
+- Escrever o procedimento de ensaio de bancada *antes* de quinta: ordem das
+  operações, o que medir, valores esperados e critérios de aborto. A tarde de
+  hardware não se repete e sem protocolo escrito produz impressões em vez de
+  dados.
+- Na bancada, confirmar por observação que o ESP32 responde mesmo
+  `Parado. Propulsao DESTRAVADA` — a confirmação do STOP assenta nisso.
+- Unificar o teto de 30% num sítio só; porta série por `by-id`.

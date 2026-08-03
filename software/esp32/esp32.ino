@@ -7,6 +7,22 @@
 //
 // Protocolo: "L: <0-30> R: <0-30>\n"
 // O sistema arranca TRAVADO. Ate receber "L: 0 R: 0" nao ha propulsao.
+//
+// -------------------------------------------------------------------------
+// PORQUE E QUE ISTO SE CHAMA esp32.ino
+//
+// O Arduino exige que o sketch principal tenha exatamente o mesmo nome da
+// pasta que o contem. Como a pasta e software/esp32/, o ficheiro tem de ser
+// esp32.ino. Chamou-se esp32_boat_.ino ate 2026-08-04, e com esse nome o
+// `arduino-cli compile` nao encontrava o sketch ("main file missing from
+// sketch") -- ou seja, o firmware que segura os ESCs nao era compilavel pela
+// linha de comandos, so aberto a mao no IDE.
+//
+// As pastas tests/ e tools/ ficam onde estao: o builder do Arduino so
+// compila os ficheiros na raiz do sketch e o que estiver dentro de src/,
+// portanto ignora-as. E o que permite ter os cabecalhos falsos do
+// syntax_check.sh em tools/stub/ sem que eles tapem os verdadeiros.
+// -------------------------------------------------------------------------
 
 #include <ESP32Servo.h>
 #include "motor_safety.h"

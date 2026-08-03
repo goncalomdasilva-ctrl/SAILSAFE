@@ -2,7 +2,7 @@
 //
 // Este ficheiro contem a LOGICA: dado um comando recebido e o relogio,
 // que PWM devem ter os motores. Nao fala com a serie, nao mexe em pinos e
-// nao inclui <Arduino.h>. O esp32_boat_.ino trata do hardware e chama isto.
+// nao inclui <Arduino.h>. O esp32.ino trata do hardware e chama isto.
 //
 // A separacao existe por uma razao pratica: assim a logica compila e testa-se
 // num PC com g++, sem ESP32 nenhum -- a mesma ideia do driver falso do
