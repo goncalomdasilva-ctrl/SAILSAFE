@@ -162,27 +162,35 @@ function startJourney() {
     $('#sSpecs').innerHTML  = (p.specs || []).map(s => `<li>${L(s)}</li>`).join('');
     $('#sBadge').innerHTML  = badge(p.status);
     card.classList.add('on');
+    /* a ficha e o texto do capítulo disputam a mesma faixa em ecrãs
+       estreitos: enquanto a ficha está aberta, o capítulo recolhe */
+    $('.stageSticky').classList.add('carding');
     Object.entries(spots).forEach(([kk, el]) => el.classList.toggle('sel', kk === k));
   }
-  $('#spotClose').onclick = () => {
+  const closeCard = () => {
     card.classList.remove('on');
+    $('.stageSticky').classList.remove('carding');
     $$('.spot').forEach(el => el.classList.remove('sel'));
   };
+  $('#spotClose').onclick = closeCard;
 
-  /* reposicionar os marcadores em cada frame */
-  (function tick() {
-    requestAnimationFrame(tick);
+  /* Reposicionar os marcadores. Corre dentro do loop da viagem em vez de ter
+     um requestAnimationFrame próprio: eram três loops de animação a competir
+     na mesma página, e este continuava a projetar pontos com o palco já fora
+     do ecrã. */
+  const spotEntries = Object.entries(spots);
+  journey.onFrame = () => {
     if (!journey.ready) return;
     const act = new Set(CH[journey.ch].spots.concat(
       journey.mix > 0.4 ? CH[Math.min(CH.length - 1, journey.ch + 1)].spots : []));
-    Object.entries(spots).forEach(([k, el]) => {
-      if (!act.has(k)) { el.classList.remove('on'); return; }
+    for (const [k, el] of spotEntries) {
+      if (!act.has(k)) { el.classList.remove('on'); continue; }
       const pt = journey.project(k);
-      if (!pt) { el.classList.remove('on'); return; }
+      if (!pt) { el.classList.remove('on'); continue; }
       el.style.transform = `translate(${pt.x}px,${pt.y}px)`;
       el.classList.add('on');
-    });
-  })();
+    }
+  };
 
   const rb = $('#jReset');
   if (rb) rb.onclick = () => journey.reset();
@@ -204,8 +212,7 @@ function startJourney() {
       cur = idx;
       beats.forEach((b, i) => b.classList.toggle('on', i === idx));
       $$('#stageDots i').forEach((d, i) => d.classList.toggle('on', i === idx));
-      card.classList.remove('on');
-      $$('.spot').forEach(el => el.classList.remove('sel'));
+      closeCard();
     }
     const hint = $('.dragHint');
     if (hint) hint.style.opacity = p > 0.03 && p < 0.9 ? 1 : 0;

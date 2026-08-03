@@ -38,10 +38,11 @@ export class Viewer {
 
   _init() {
     const r = this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas, antialias: true, alpha: true,
+      canvas: this.canvas, antialias: !LOWQ, alpha: true,
       powerPreference: 'high-performance'
     });
-    r.setPixelRatio(Math.min(devicePixelRatio, LOWQ ? 1.5 : 2));
+    r.setPixelRatio(Math.min(devicePixelRatio, LOWQ ? 1.25 : 2));
+    this.active = true;   // desligado quando o visualizador sai do ecrã
     r.shadowMap.enabled = !LOWQ;
     r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping;
@@ -115,6 +116,11 @@ export class Viewer {
 
     addEventListener('resize', () => this._resize());
     if (window.ResizeObserver) new ResizeObserver(() => this._resize()).observe(this.canvas.parentElement);
+    try {
+      if ('IntersectionObserver' in window)
+        new IntersectionObserver(es => { this.active = es[0].isIntersecting; },
+          { threshold: 0 }).observe(this.canvas);
+    } catch { /* sem observador: mantém-se sempre activo */ }
     this._resize();
     this._loop();
   }
@@ -259,6 +265,9 @@ export class Viewer {
 
   _loop() {
     requestAnimationFrame(() => this._loop());
+    /* o palco e o visualizador nunca estão os dois no ecrã ao mesmo tempo:
+       desligar o que está fora tira metade do trabalho de GPU da página */
+    if (!this.active || document.hidden) return;
     if (this._anim) {
       const a = this._anim;
       a.t = Math.min(1, a.t + 0.05);

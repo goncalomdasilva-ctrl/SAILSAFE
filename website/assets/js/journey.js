@@ -10,13 +10,12 @@ import { assign } from './materials.js';
 
 const WL = 0.0382;
 
-/* Rotação base do céu. Numa equirectangular, a coluna u vê-se na direção
-   -X quando u=0. Resolvendo R = -az - 2πu para a água da enseada (u≈0,475)
-   ficar no azimute de abertura (34°), dá 2,705 rad. É isto que põe o barco
-   dentro da água e não em cima da areia. */
-const SKY0 = 2.705;
 const LOWQ = (() => { try {
   return matchMedia('(max-width:820px)').matches || matchMedia('(pointer:coarse)').matches;
+} catch { return false; } })();
+/* quem pediu menos movimento continua a ver a cena, mas sem agitação */
+const CALM = (() => { try {
+  return matchMedia('(prefers-reduced-motion: reduce)').matches;
 } catch { return false; } })();
 
 /* Capítulos. pano: 0 = mar aberto, 1 = na areia.
@@ -55,51 +54,66 @@ export class Journey {
     this.userAz = 0; this.userEl = 0;      // arrasto do utilizador
     this.velAz = 0; this.velEl = 0;
     this.ready = false;
+    this.onFrame = null;   // gancho: os marcadores correm neste loop, não noutro
+    this.active = true;    // desligado quando o palco sai do ecrã
     this._init();
   }
 
   _init() {
     const r = this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas, antialias: true, alpha: true
+      canvas: this.canvas, antialias: !LOWQ, alpha: true,
+      powerPreference: 'high-performance'
     });
-    r.setPixelRatio(Math.min(devicePixelRatio, LOWQ ? 1.5 : 2));
+    r.setPixelRatio(Math.min(devicePixelRatio, LOWQ ? 1.25 : 2));
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.05;
     const sc = this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(36, 2, 0.02, 200);
 
-    /* --- céu esférico: duas panorâmicas com crossfade --- */
-    const loader = new THREE.TextureLoader();
-    const mk = (url, order) => {
-      const t = loader.load(url, tx => {
-        tx.colorSpace = THREE.SRGBColorSpace;
-        tx.mapping = THREE.EquirectangularReflectionMapping;
-        if (order === 0) this._applyEnv(tx);
-      });
-      const m = new THREE.Mesh(
-        new THREE.SphereGeometry(60, 48, 32),
-        new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide,
-          transparent: true, opacity: 0, depthWrite: false }));
-      m.visible = false;              // fundo é a fotografia fixa (.stagePhoto)
-      m.renderOrder = -10 + order;
-      sc.add(m);
-      return m;
-    };
-    /* no ficheiro único as panorâmicas vêm embutidas em base64 */
-    const P = window.__SS_PANO__ || ['assets/img/pano_mar.jpg', 'assets/img/pano_areia.jpg'];
-    this.skyYaw = 0;
-    this.sky = [mk(P[0], 0), mk(P[1], 1)];
+    /* --- iluminação do ambiente ---
+       O fundo do palco é um gradiente CSS, por isso não há céu esférico a
+       desenhar. A panorâmica serve unicamente de fonte para o envmap: entra
+       uma vez, gera o PMREM e é descartada. Antes carregavam-se aqui duas
+       equirectangulares de 2,2 MB em esferas com visible=false — 4,4 MB
+       transferidos, descodificados e enviados para a GPU sem nunca aparecer
+       um único pixel deles no ecrã. */
+    const ENV = (window.__SS_PANO__ && window.__SS_PANO__[0]) || 'assets/img/pano_env.jpg';
+    new THREE.TextureLoader().load(ENV, tx => {
+      tx.colorSpace = THREE.SRGBColorSpace;
+      tx.mapping = THREE.EquirectangularReflectionMapping;
+      this._applyEnv(tx);
+      tx.dispose();
+    });
 
     const sun = new THREE.DirectionalLight(0xfff2dc, 2.6);
     sun.position.set(2.0, 1.6, 0.8); sc.add(sun);
     sc.add(new THREE.HemisphereLight(0xd8ecfa, 0x4a6b70, 0.9));
 
-    /* --- água local, fundida com o mar da panorâmica --- */
-    const seg = LOWQ ? 56 : 110;
+    /* --- água local, fundida com o mar da panorâmica ---
+       O plano tem 30 m mas a ondulação só existe dentro do disco onde
+       fall > 0 (raio √30 ≈ 5,48 m) — cerca de 10 % dos vértices. Guardamos
+       uma lista desses índices para o loop tocar apenas neles em vez de
+       varrer os 12 321 vértices a cada frame. */
+    const seg = LOWQ ? 64 : 110;
     const geo = new THREE.PlaneGeometry(30, 30, seg, seg);
     geo.rotateX(-Math.PI / 2);
+    geo.attributes.position.setUsage(THREE.DynamicDrawUsage);
+    geo.attributes.normal.setUsage(THREE.DynamicDrawUsage);
     this.wGeo = geo;
     this.wBase = Float32Array.from(geo.attributes.position.array);
+    {
+      const base = this.wBase, idx = [], fall = [];
+      for (let i = 0; i < base.length; i += 3) {
+        const f = 1 - (base[i] * base[i] + base[i + 2] * base[i + 2]) / 30;
+        if (f > 0.01) { idx.push(i); fall.push(f); }
+      }
+      this.wIdx = Int32Array.from(idx);
+      this.wFall = Float32Array.from(fall);
+      /* fora do disco a superfície é plana: normal fixa a apontar para cima */
+      const nrmA = geo.attributes.normal.array;
+      for (let i = 0; i < nrmA.length; i += 3) { nrmA[i] = 0; nrmA[i + 1] = 1; nrmA[i + 2] = 0; }
+      geo.attributes.normal.needsUpdate = true;
+    }
     const am = document.createElement('canvas'); am.width = am.height = 256;
     const ax = am.getContext('2d');
     const rg = ax.createRadialGradient(128, 128, 8, 128, 128, 126);
@@ -122,18 +136,26 @@ export class Journey {
     this.nrm = new THREE.CanvasTexture(nn);
     this.nrm.wrapS = this.nrm.wrapT = THREE.RepeatWrapping;
     this.nrm.repeat.set(9, 9);
-    this.nrm2 = this.nrm.clone(); this.nrm2.needsUpdate = true;
-    this.nrm2.wrapS = this.nrm2.wrapT = THREE.RepeatWrapping;
-    this.nrm2.repeat.set(21, 21);
+    if (!LOWQ) {
+      this.nrm2 = this.nrm.clone(); this.nrm2.needsUpdate = true;
+      this.nrm2.wrapS = this.nrm2.wrapT = THREE.RepeatWrapping;
+      this.nrm2.repeat.set(21, 21);
+    }
 
-    this.water = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({
+    /* O clearcoat é dos shaders mais caros do three.js e a água ocupa o ecrã
+       todo. Em ecrãs de toque cai para MeshStandardMaterial com uma só camada
+       de ondulação: à escala a que a água se vê, a diferença não se nota. */
+    const wOpts = {
       color: 0x4d9cb4, roughness: 0.13, metalness: 0.0,
       normalMap: this.nrm, normalScale: new THREE.Vector2(0.55, 0.55),
-      clearcoat: 0.9, clearcoatRoughness: 0.10,
-      clearcoatNormalMap: this.nrm2,
       alphaMap: new THREE.CanvasTexture(am), transparent: true,
       depthWrite: false, envMapIntensity: 2.1, side: THREE.DoubleSide
-    }));
+    };
+    this.water = new THREE.Mesh(geo, LOWQ
+      ? new THREE.MeshStandardMaterial(wOpts)
+      : new THREE.MeshPhysicalMaterial(Object.assign({
+          clearcoat: 0.9, clearcoatRoughness: 0.10, clearcoatNormalMap: this.nrm2
+        }, wOpts)));
     sc.add(this.water);
 
     /* --- espuma, esteira e jato --- */
@@ -237,7 +259,7 @@ export class Journey {
     /* esteiras lineares antigas fora — o campo de lavagem substitui-as */
     this.wakes.forEach(m => { m.visible = false; });
 
-    this.N = LOWQ ? 110 : 260;    this.N = LOWQ ? 110 : 260;
+    this.N = LOWQ ? 90 : 260;
     this.sp = new Float32Array(this.N * 3);
     this.sv = new Float32Array(this.N * 3);
     this.sl = new Float32Array(this.N);
@@ -264,9 +286,12 @@ export class Journey {
       down = { x: e.clientX, y: e.clientY };
       this.touched = true;
     };
-    this.canvas.addEventListener('pointerdown', dn);
-    addEventListener('pointerup', up);
-    addEventListener('pointermove', mv);
+    /* o listener de movimento só existe enquanto o dedo/rato está em baixo */
+    this.canvas.addEventListener('pointerdown', e => {
+      dn(e); addEventListener('pointermove', mv, { passive: true });
+    });
+    addEventListener('pointerup', e => { up(e); removeEventListener('pointermove', mv); });
+    addEventListener('pointercancel', e => { up(e); removeEventListener('pointermove', mv); });
 
     this.zoom = 1;   // fixo: a roda fica livre para o scroll da página
 
@@ -279,6 +304,18 @@ export class Journey {
     addEventListener('resize', () => this._resize());
     if (window.ResizeObserver)
       new ResizeObserver(() => this._resize()).observe(this.canvas.parentElement);
+
+    /* desligar quando o palco sai do ecrã; se não houver suporte, fica ligado */
+    try {
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(es => {
+          this.active = es[0].isIntersecting;
+          if (!this.active) this._last = 0;
+        }, { threshold: 0 }).observe(this.canvas);
+      }
+    } catch { /* sem observador: mantém-se sempre activo */ }
+    addEventListener('visibilitychange', () => { this._last = 0; });
+
     this._resize();
     this._loop();
   }
@@ -336,6 +373,22 @@ export class Journey {
          + 0.0021 * Math.sin((x * 0.6 + z) * 6.2 + t * 2.6);
   }
 
+  /* Altura e declive da onda de uma só vez.
+     A soma de senos tem derivada conhecida, por isso a normal sai da fórmula
+     em vez de sair de computeVertexNormals(), que percorria os 24 200
+     triângulos do plano a cada frame só para obter o mesmo resultado.
+     Escreve em out = [h, dh/dx, dh/dz]. */
+  _waveD(x, z, t, out) {
+    const A = x * 2.6 + t * 1.8;
+    const B = z * 4.0 - t * 1.4;
+    const C = (x * 0.6 + z) * 6.2 + t * 2.6;
+    const sA = Math.sin(A), sB = Math.sin(B), sC = Math.sin(C);
+    out[0] = 0.0058 * sA + 0.0038 * sB + 0.0021 * sC;
+    out[1] = 0.0058 * 2.6 * Math.cos(A) + 0.0021 * 3.72 * Math.cos(C);
+    out[2] = 0.0038 * 4.0 * Math.cos(B) + 0.0021 * 6.2 * Math.cos(C);
+    return out;
+  }
+
   setProgress(p) {
     const n = CH.length - 1;
     const q = Math.max(0, Math.min(n, p));
@@ -346,25 +399,60 @@ export class Journey {
   project(key) {
     const a = ANCHOR[key];
     if (!a || !this.ready) return null;
-    const v = new THREE.Vector3(a[0] + this.bx, a[1] + this.by, a[2]);
+    const v = (this._pv || (this._pv = new THREE.Vector3()))
+      .set(a[0] + this.bx, a[1] + this.by, a[2]);
     v.project(this.camera);
     if (v.z > 1) return null;
-    const r = this.canvas.getBoundingClientRect();
-    return { x: (v.x * 0.5 + 0.5) * r.width, y: (-v.y * 0.5 + 0.5) * r.height };
+    /* dimensões vindas do _resize: chamar getBoundingClientRect() aqui era
+       uma leitura de layout por marcador e por frame */
+    return { x: (v.x * 0.5 + 0.5) * this._w, y: (-v.y * 0.5 + 0.5) * this._h };
   }
 
   _resize() {
     const p = this.canvas.parentElement;
     const w = p.clientWidth, h = p.clientHeight;
     if (!w || !h) return;
+    this._w = w; this._h = h;
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+
+    /* O barco fica sempre ao centro do quadro — é ele o assunto. Em vez de o
+       empurrar para o lado para dar lugar ao texto, a câmara afasta-se: o
+       enquadramento continua centrado e o espaço aparece à volta do modelo. */
+    this.estreito = Math.max(0, Math.min(1, (1.30 - w / h) / 0.80));
+  }
+
+  /* Afastamento da câmara para o capítulo a esta distância.
+
+     20 % em todos os ecrãs, que é o ar que faltava à volta do modelo.
+     Em ecrãs estreitos soma-se mais, e sobretudo nos grandes planos: o fov
+     do three.js é o vertical, por isso um ecrã ao alto corta muito mais nos
+     lados, e são os capítulos de perto que sofrem com isso. Um afastamento
+     igual para todos resolveria o último capítulo à custa de encolher o
+     plano de abertura, que não tem problema nenhum — daí o termo depender
+     da distância do capítulo. */
+  _distK(dist) {
+    const e = this.estreito || 0;
+    const perto = Math.max(0, Math.min(1, (2.0 - dist) / 1.5));
+    return 1.20 * (1 + 0.125 * e) * (1 + 0.75 * e * perto);
   }
 
   _loop() {
     requestAnimationFrame(() => this._loop());
-    const dt = 0.016;
+    /* Fora do ecrã ou com o separador escondido não há nada a mostrar: o
+       loop existe, mas não desenha nem calcula. Era isto que mantinha dois
+       contextos WebGL a 60 fps durante a leitura do resto da página. */
+    if (!this.active || document.hidden) { this._last = 0; return; }
+
+    /* Passo real em vez de 0,016 fixo. Com o passo fixo, um frame de 33 ms
+       fazia a cena andar a meia velocidade — parte do arrastar que se via
+       no telemóvel não era falta de fps, era a animação a atrasar-se. */
+    const now = performance.now();
+    const dt = this._last ? Math.min(0.05, (now - this._last) / 1000) : 0.016;
+    this._last = now;
     this.t += dt;
+    this.frame = (this.frame || 0) + 1;
     if (this.intro < 1) this.intro = Math.min(1, this.intro + dt / 3.0);
 
     const a = CH[this.ch], b = CH[Math.min(CH.length - 1, this.ch + 1)];
@@ -389,16 +477,27 @@ export class Journey {
     const vel = thr * 2.0;
     this.phase += vel * dt;
 
-    /* água */
-    const arr = this.wGeo.attributes.position.array, base = this.wBase;
-    for (let i = 0; i < arr.length; i += 3) {
-      const d2 = base[i] * base[i] + base[i + 2] * base[i + 2];
-      const fall = Math.max(0, 1 - d2 / 30);
-      arr[i + 1] = fall > 0.01
-        ? this._wave(base[i] + this.phase, base[i + 2], this.t) * fall : 0;
+    /* água: só os vértices dentro do disco da ondulação, com a normal vinda
+       da derivada. Em ecrãs de toque a malha refaz-se a cada dois frames —
+       a 60 Hz a diferença não se lê e poupa metade das transferências para
+       a GPU. */
+    if (!LOWQ || (this.frame & 1)) {
+      const pos = this.wGeo.attributes.position, nrm = this.wGeo.attributes.normal;
+      const arr = pos.array, nA = nrm.array, base = this.wBase;
+      const idx = this.wIdx, fal = this.wFall, ph = this.phase, t = this.t;
+      const d = this._d || (this._d = [0, 0, 0]);
+      for (let k = 0; k < idx.length; k++) {
+        const i = idx[k], f = fal[k];
+        this._waveD(base[i] + ph, base[i + 2], t, d);
+        arr[i + 1] = d[0] * f;
+        /* regra do produto: o esbatimento radial também inclina a superfície */
+        const gx = d[1] * f + d[0] * (-base[i] / 15);
+        const gz = d[2] * f + d[0] * (-base[i + 2] / 15);
+        const inv = 1 / Math.sqrt(gx * gx + gz * gz + 1);
+        nA[i] = -gx * inv; nA[i + 1] = inv; nA[i + 2] = -gz * inv;
+      }
+      pos.needsUpdate = true; nrm.needsUpdate = true;
     }
-    this.wGeo.attributes.position.needsUpdate = true;
-    this.wGeo.computeVertexNormals();
     this.water.material.opacity = 1 - wantBeach * 0.25;
 
     if (this.ready) {
@@ -430,7 +529,7 @@ export class Journey {
       this.wakeTex.offset.y = (this.wakeTex.offset.y - vel * .03) % 1;
       /* as duas camadas de ondulação correm a velocidades diferentes */
       this.nrm.offset.set(this.phase * 0.16, this.t * 0.020);
-      this.nrm2.offset.set(-this.phase * 0.09, -this.t * 0.032);
+      if (this.nrm2) this.nrm2.offset.set(-this.phase * 0.09, -this.t * 0.032);
 
       const P = this.sp, V = this.sv, LF = this.sl, jet = 0.7 + thr * 3.2;
       for (let i = 0; i < this.N; i++) {
@@ -498,7 +597,8 @@ export class Journey {
       this.userEl += this.velEl * dt; this.velEl *= 0.88;
       this.userEl = Math.max(-14, Math.min(30, this.userEl));
 
-      const dist = (L(a.dist, b.dist) + swoop) * (this.zoom || 1) + (1 - e) * 2.4;
+      const d0 = L(a.dist, b.dist);
+      const dist = (d0 * this._distK(d0) + swoop) * (this.zoom || 1) + (1 - e) * 2.4;
       const azd = L(a.az, b.az) + this.userAz;
       const eld = Math.max(-8, Math.min(34, L(a.el, b.el) + this.userEl));
       const fov = L(a.fov, b.fov);
@@ -506,11 +606,12 @@ export class Journey {
         this.camera.fov = fov; this.camera.updateProjectionMatrix();
       }
       const az = azd * Math.PI / 180, el = eld * Math.PI / 180;
-      const shake = thr * 0.0035 * Math.sin(this.t * 9.1);
+      const shake = CALM ? 0 : thr * 0.0035 * Math.sin(this.t * 9.1);
       this.camera.position.set(
         bx + dist * Math.cos(el) * Math.cos(az),
-        WL + dist * Math.sin(el) + shake + Math.sin(this.t * .6) * .006,
+        WL + dist * Math.sin(el) + shake + (CALM ? 0 : Math.sin(this.t * .6) * .006),
         dist * Math.cos(el) * Math.sin(az));
+      /* a câmara aponta ao barco e ele fica ao centro do quadro */
       this.camera.lookAt(bx, WL + 0.06, sway);
 
       /* o céu acompanha o barco em posição e roda com a marcha: é a rotação
@@ -520,5 +621,6 @@ export class Journey {
       this.water.position.set(bx, 0, 0);
     }
     this.renderer.render(this.scene, this.camera);
+    if (this.onFrame) this.onFrame();
   }
 }

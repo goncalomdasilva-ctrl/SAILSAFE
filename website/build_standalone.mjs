@@ -32,7 +32,8 @@ const js = res.outputFiles[0].text;
 /* fundo é gradiente CSS; a panorâmica pequena alimenta só o envmap */
 const css = fs.readFileSync(A('assets/css/style.css'), 'utf8');
 const envPano = fs.readFileSync(A('assets/img/pano_env.jpg')).toString('base64');
-const pano = [envPano, envPano];
+/* uma só entrada: o palco usa a panorâmica apenas como fonte do envmap */
+const pano = [envPano];
 const glb = fs.readFileSync(A('assets/sailsafe.glb')).toString('base64');
 
 /* 3. HTML: remove importmap, folha externa e script de módulo.
