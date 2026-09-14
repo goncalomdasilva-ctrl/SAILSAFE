@@ -64,9 +64,9 @@ function buildSpecs() {
   $('#specBody').innerHTML = SPECS.filter(s => s.g === specTab).map(s =>
     `<tr><td>${L(s.k)}</td><td>${L(s.v)}</td><td>${badge(s.s)}</td></tr>`).join('');
 }
-const buildSafety   = () => $('#safetyGrid').innerHTML = [1,2,3,4,5,6].map(i =>
+const buildSafety   = () => $('#safetyGrid').innerHTML = [1,2,3,4,5,6,7].map(i =>
   `<div class="mini"><h4>${t('sf.'+i+'.t', lang)}</h4><p>${t('sf.'+i+'.b', lang)}</p></div>`).join('');
-const buildSoftware = () => $('#swGrid').innerHTML = [1,2,3,4,5,6].map(i =>
+const buildSoftware = () => $('#swGrid').innerHTML = [1,2,3,4,5,6,7,8].map(i =>
   `<div class="mini"><h4>${t('sw.'+i+'.t', lang)}</h4><p>${t('sw.'+i+'.b', lang)}</p></div>`).join('');
 
 /* ---------------- visualizador ----------------

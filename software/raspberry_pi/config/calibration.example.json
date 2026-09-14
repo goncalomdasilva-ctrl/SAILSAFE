@@ -1,0 +1,8 @@
+{
+  "_nota": "Fatores de escala de um ponto por canal do ADS1015. Copiar para calibration.json e preencher com tools/sense_bench.py --calibrar. Um fator de 1.0 quer dizer 'por calibrar', nao 'perfeito'.",
+  "_como": "python3 -m tools.sense_bench --calibrar a2 12.60",
+  "a0": 1.0,
+  "a1": 1.0,
+  "a2": 1.0,
+  "a3": 1.0
+}

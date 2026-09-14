@@ -2,6 +2,15 @@ __pycache__/
 *.pyc
 logs/
 
+# Documentos pessoais que vivem nesta pasta por conveniencia mas nao
+# pertencem ao repositorio do projecto.
+cv_*.pdf
+cv_*.tex
+cv_*.aux
+cv_*.log
+cv_*.out
+preview-*.png
+
 # Artefactos de build do site.
 # SAILSAFE.html e' o ficheiro unico gerado por website/build_standalone.mjs
 # (~4 MB, reescrito por inteiro a cada build). Para o abrir offline, gerar
@@ -13,3 +22,4 @@ website/SAILSAFE.html
 # pasta website/ tal como esta no repositorio, sem passo de build, e o
 # assets/js/app.js carrega o .glb em tempo de execucao. Se for ignorado, o
 # site publicado fica sem modelo 3D.
+Claude outputs/

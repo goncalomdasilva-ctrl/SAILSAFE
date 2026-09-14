@@ -194,7 +194,7 @@ export const PARTS = {
     name: P('LiPo 3S 2200 mAh — eletrónica', 'LiPo 3S 2200 mAh — electronics'),
     desc: P('Bateria dedicada à eletrónica, através do conversor DC-DC de 5 V. Os positivos das duas redes permanecem separados e as baterias nunca são ligadas em paralelo; existe uma única ligação de referência, em estrela, entre o GND da eletrónica e o barramento negativo de potência.',
             'Dedicated electronics battery feeding the 5 V DC-DC converter. The two positive rails stay separate and the batteries are never paralleled; a single star reference bonds electronics ground to the power negative bus.'),
-    specs: [P('35 × 105 × 25 mm · 7,4 V (2S)', '35 × 105 × 25 mm · 7.4 V (2S)'),
+    specs: [P('35 × 105 × 25 mm · 11,1 V (3S)', '35 × 105 × 25 mm · 11.1 V (3S)'),
             P('Fusível 10 A + interruptor estanque', '10 A fuse + sealed switch')],
     status: 'validated'
   },
@@ -310,11 +310,13 @@ export const SPECS = [
   { g:'elec', k:P('Bateria de eletrónica','Electronics battery'), v:'1 × LiPo 3S 2200 mAh', s:'validated' },
   { g:'elec', k:P('Arquitetura elétrica','Electrical architecture'), v:P('3 circuitos independentes','3 independent circuits'), s:'validated' },
   { g:'elec', k:P('Tensão de propulsão','Propulsion voltage'), v:'11,1 V (3S)', s:'validated' },
-  { g:'elec', k:P('Tensão da eletrónica','Electronics voltage'), v:'7,4 V (2S)', s:'validated' },
+  { g:'elec', k:P('Tensão da eletrónica','Electronics voltage'), v:'11,1 V (3S)', s:'validated' },
   { g:'elec', k:P('Fusível por casco','Fuse per hull'), v:'40 A', s:'validated' },
   { g:'elec', k:P('Fusível da eletrónica','Electronics fuse'), v:'10 A', s:'validated' },
   { g:'elec', k:P('Corte de emergência','Emergency cut-off'), v:P('Loop key XT90-S por casco','XT90-S loop key per hull'), s:'validated' },
   { g:'elec', k:P('Potência a atravessar a ponte','Power crossing the bridge'), v:P('Nenhuma — só sinais','None — signals only'), s:'validated' },
+  { g:'elec', k:P('Sense de bordo','On-board sensing'), v:P('3 tensões + 1 corrente (ADS1015)','3 voltages + 1 current (ADS1015)'), s:'estimated' },
+  { g:'elec', k:P('Gatilho de regresso','Return trigger'), v:P('Tensão da bateria da eletrónica','Electronics battery voltage'), s:'estimated' },
   { g:'elec', k:P('Corrente máxima estimada','Estimated peak current'), v:'≈54 A', s:'estimated' },
   { g:'elec', k:P('Autonomia em cruzeiro (30 %)','Cruise endurance (30 %)'), v:'30–60 min', s:'estimated' },
 
@@ -326,9 +328,11 @@ export const SPECS = [
   { g:'ctrl', k:P('Heartbeat','Heartbeat'), v:'5 Hz (200 ms)', s:'validated' },
   { g:'ctrl', k:P('Timeout de failsafe','Failsafe timeout'), v:'≈1,1 s', s:'validated' },
   { g:'ctrl', k:P('Teto de potência em ensaio','Test power ceiling'), v:'30 %', s:'validated' },
+  { g:'ctrl', k:P('Trava de propulsão','Propulsion latch'), v:P('Abre só com L: 0 R: 0','Opens only on L: 0 R: 0'), s:'validated' },
   { g:'ctrl', k:P('GPS','GPS'), v:'NEO-8M', s:'validated' },
+  { g:'ctrl', k:P('Ligação do GPS','GPS wiring'), v:P('UART do GPIO · 9600 baud','GPIO UART · 9600 baud'), s:'estimated' },
   { g:'ctrl', k:P('IMU','IMU'), v:'BNO055', s:'validated' },
-  { g:'ctrl', k:P('ADC','ADC'), v:'ADS1015 (12-bit)', s:'validated' }
+  { g:'ctrl', k:P('ADC','ADC'), v:P('ADS1015 (12-bit) · FSR ±4,096 V','ADS1015 (12-bit) · ±4.096 V FSR'), s:'validated' }
 ];
 
 export const SPEC_GROUPS = {

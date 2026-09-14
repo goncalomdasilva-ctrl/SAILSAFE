@@ -8,33 +8,43 @@ Aplica-se ao circuito da caixa IP66 (U4 = ADS1015) do esquema elétrico v1.11.
 |---|---|---|
 | 1 | 2026-07-25 | Versão inicial. Detetada a saturação do ADS1015 com o divisor 10k/2k2. |
 | 2 | 2026-07-28 | Divisores passam a 5k/1k (resistores disponíveis). Canais reatribuídos: entra a tensão da bateria da eletrónica, sai a corrente do casco direito. Condensador de filtro passa a 2,2 µF. Bateria da eletrónica confirmada 3S 2200 mAh. |
+| 3 | 2026-09-14 | Divisores passam a **10k/2k**, que é o par realmente em stock. **O rácio não muda:** 2/12 é o mesmo 1/6 que 1/(5+1), pelo que as tabelas de conversão, o fundo de escala, a resolução e o limite de saturação da revisão 2 continuam válidos sem uma única alteração. Mudam as duas grandezas que dependem dos valores absolutos e não do quociente: a impedância de fonte duplica (833 Ω → 1667 Ω), e com ela o condensador recomendado passa de 2,2 µF a 1 µF para o mesmo corte; a corrente permanente por divisor cai para metade. |
 
 ---
 
 ## 1. O problema original
 
 Os divisores de sense estavam especificados a 10k/2k2, com rácio 0,180328. Uma LiPo 3S carregada
-(12,6 V) dá **2,272 V** à entrada do ADS1015, acima do FSR por omissão de **±2,048 V**. O limite de
+(12,6 V) dava **2,272 V** à entrada do ADS1015, acima do FSR por omissão de **±2,048 V**. O limite de
 saturação referido à bateria era 11,36 V — ou seja, **toda a zona útil de descarga lia saturado** e a
 bateria pareceria cheia até já ir a meio da descarga.
 
 Não é uma avaria que se manifeste: o circuito está eletricamente são e a leitura é sempre plausível.
 Só está errada.
 
-## 2. Divisor adotado — 5k / 1k
+## 2. Divisor adotado — 10k / 2k
 
 Aproveitam-se resistores já disponíveis. Nenhuma compra necessária.
 
+> **Porque é que a mudança de 5k/1k para 10k/2k não mexe em mais nada.** O que o circuito faz
+> depende do rácio, e 2/(10+2) é exatamente o mesmo 1/6 que 1/(5+1). O fundo de escala continua
+> em 24,6 V, a resolução em 12 mV e o limite de saturação em 12,29 V. Só duas grandezas mudam, e
+> são as que dependem dos valores absolutos e não do quociente: a impedância de fonte duplica e a
+> corrente permanente reduz-se a metade.
+
 | | valor |
 |---|---|
-| Resistor superior (ao positivo) | 5 kΩ |
-| Resistor inferior (à massa) | 1 kΩ |
+| Resistor superior (ao positivo) | 10 kΩ |
+| Resistor inferior (à massa) | 2 kΩ |
 | Rácio k | 0,16667 |
 | PGA / FSR | **±4,096 V** (GAIN_ONE) — **não** o default de ±2,048 V |
 | Fundo de escala referido à bateria | 24,6 V |
 | Resolução | 12,00 mV (4,00 mV por célula numa 3S) |
-| Impedância de fonte | 833 Ω |
-| Corrente permanente | 2,10 mA a 12,6 V |
+| Impedância de fonte | 1667 Ω |
+| Corrente permanente | 1,05 mA a 12,6 V |
+
+Três divisores, portanto **3 × 10 kΩ e 3 × 2 kΩ**. Contar antes de começar a soldar: um divisor a
+menos descobre-se com o ferro quente.
 
 Tabela de conversão (3S):
 
@@ -72,13 +82,35 @@ Elimina praticamente todo o erro de ganho e permite usar resistores de 5 % com c
 ## 4. Filtragem
 
 Condensador em paralelo com o resistor inferior de cada divisor (SENSE→GND do respetivo circuito).
+O canal A3 (corrente) não leva condensador: a saída do ACS758 é de baixa impedância e não há
+resistor inferior com que formar o filtro. Filtrá-la exigiria um RC em série próprio, e isso fica
+para quando o sensor existir.
 
-Com a impedância de fonte de **833 Ω** (era 1,80 kΩ na revisão 1):
+Com a impedância de fonte de **1667 Ω** (era 833 Ω na revisão 2 e 1,80 kΩ na revisão 1):
 
-| C | fc |
-|---|---|
-| 1,0 µF | 191 Hz |
-| **2,2 µF** | **87 Hz** ← recomendado |
+| C | fc | τ |
+|---|---|---|
+| 0,47 µF | 203 Hz | 0,8 ms |
+| **1,0 µF** | **96 Hz** ← recomendado | 1,7 ms |
+| 2,2 µF | 43 Hz | 3,7 ms |
+| 4,7 µF | 20 Hz | 7,8 ms |
+
+**Qualquer valor entre 1 µF e 4,7 µF serve.** A tensão de bateria é um sinal lento e o tempo de
+estabelecimento mais longo da tabela — 7,8 ms de constante de tempo, portanto menos de 70 ms para
+estabelecer a 12 bit — é irrelevante para quem lê a bateria uma vez por segundo. O critério real é o
+que houver na gaveta.
+
+**Tipo de condensador.** Cerâmico X7R/X5R ou de filme, com tensão nominal de 16 V ou mais (aos
+terminais do resistor inferior estão 2,1 V, mas um condensador barato a trabalhar perto do limite
+perde capacidade). Um eletrolítico funciona, mas a sua corrente de fuga forma um caminho em paralelo
+com o resistor inferior e desvia o rácio; se for o que houver, montá-lo **antes** de calibrar, para
+a calibração o absorver.
+
+**Sem condensador nenhum ainda dá para trabalhar.** O condensador existe para rejeitar o ruído de
+comutação dos ESCs. Enquanto não houver ESCs a comutar — bancada com fonte de laboratório, ou com a
+bateria mas sem propulsão — os divisores podem ser montados, lidos e calibrados sem ele. Passa a ser
+obrigatório antes do primeiro ensaio com motores a girar, e a calibração deve ser refeita depois de
+o pôr.
 
 A tensão de bateria é um sinal lento; o corte a 87 Hz rejeita o ruído de comutação do ESC, que é a
 fonte de ruído dominante a bordo.
@@ -90,9 +122,9 @@ escasso é o canal, não o componente** — por isso gastam-se três canais em t
 
 | canal | sinal | sensor |
 |---|---|---|
-| A0 | Tensão do casco esquerdo | divisor 5k/1k |
-| A1 | Tensão do casco direito | divisor 5k/1k |
-| A2 | **Tensão da bateria da eletrónica (3S 2200)** | divisor 5k/1k |
+| A0 | Tensão do casco esquerdo | divisor 10k/2k |
+| A1 | Tensão do casco direito | divisor 10k/2k |
+| A2 | **Tensão da bateria da eletrónica (3S 2200)** | divisor 10k/2k |
 | A3 | Corrente do casco esquerdo | ACS758-050U |
 
 ### Porque entra a bateria da eletrónica
@@ -154,9 +186,9 @@ se mantém.
 
 ## 7. Alterações a fazer no KiCad
 
-1. Divisores a 5 kΩ / 1 kΩ, com **tolerância anotada** no campo do componente.
+1. Divisores a 10 kΩ / 2 kΩ, com **tolerância anotada** no campo do componente.
 2. **Três** divisores: SENSE_E, SENSE_D e SENSE_ELEC (novo).
-3. Condensadores de **2,2 µF** em paralelo com o resistor inferior de cada divisor.
+3. Condensadores de **1 µF** (ou o que houver entre 1 e 4,7 µF) em paralelo com o resistor inferior de cada divisor.
 4. A3 do U4 ligado a ISENSE_E (ACS758). Casco direito sem corrente, documentado como reserva.
 5. Corrigir o circuito da caixa IP66 para **LiPo 3S 2200 mAh**.
 6. Nota junto de U4:

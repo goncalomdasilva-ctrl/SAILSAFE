@@ -132,7 +132,7 @@ export const T = {
   's.power.t': ['Energia e distribuição', 'Power and distribution'],
   's.power.b': [
     'Três circuitos completamente independentes. Cada casco tem a sua LiPo 3S de 5000 mAh alojada abaixo do convés, o seu fusível de 40 A e a sua loop key XT90-S, alimentando apenas o ESC e o waterjet daquele lado. A eletrónica tem circuito próprio: LiPo 3S de 2200 mAh, fusível de 10 A, interruptor estanque e conversor DC-DC de 5 V. Nenhum cabo de potência atravessa a ponte — só passam sinais. Os negativos dos dois cascos encontram o GND da eletrónica num único ponto, dentro da caixa IP66, pelo fio preto da ficha servo de cada ESC.',
-    'Three completely independent circuits. Each hull carries its own 5000 mAh 3S LiPo below deck, its own 40 A fuse and its own XT90-S loop key, feeding only that side\'s ESC and waterjet. The electronics run on their own circuit: a 2200 mAh 2S LiPo, a 10 A fuse, a sealed switch and a 5 V DC-DC converter. No power cable crosses the bridge — only signals do. The two hull negatives meet electronics ground at a single point inside the IP66 enclosure, through the black wire of each ESC servo lead.'
+    'Three completely independent circuits. Each hull carries its own 5000 mAh 3S LiPo below deck, its own 40 A fuse and its own XT90-S loop key, feeding only that side\'s ESC and waterjet. The electronics run on their own circuit: a 2200 mAh 3S LiPo, a 10 A fuse, a sealed switch and a 5 V DC-DC converter. No power cable crosses the bridge — only signals do. The two hull negatives meet electronics ground at a single point inside the IP66 enclosure, through the black wire of each ESC servo lead.'
   ],
   's.propulsion.t': ['Propulsão', 'Propulsion'],
   's.propulsion.b': [
@@ -181,24 +181,28 @@ export const T = {
   'sf.6.t': ['Ventilação das baterias', 'Battery venting'],
   'sf.6.b': ['O compartimento das LiPo não é hermético: em caso de falha de célula há libertação de gases, e dois entalhes de 2 mm funcionam como respiro.',
              'The LiPo compartment is deliberately not airtight: a cell failure releases gas, and two 2 mm notches act as a vent.'],
-  'sf.open.t': ['Decisão em aberto: kill-switch remoto', 'Open decision: remote kill-switch'],
+  'sf.7.t': ['STOP confirmado', 'Confirmed STOP'],
+  'sf.7.b': ['O STOP é repetido até o ESP32 responder, com o buffer de entrada drenado primeiro — em ARMED há sempre respostas antigas por ler, e aceitar uma delas dava a garantia sem o facto. O orçamento inteiro (~0,24 s) cabe dentro do timeout de 1 s do failsafe, para as duas proteções se encadearem em vez de competirem. Um STOP não confirmado é ruidoso e fica registado, mas nunca é bloqueado: uma paragem que só vale se o outro lado responder não é uma paragem, é um pedido.',
+             'STOP is retried until the ESP32 answers, with the input buffer drained first — in ARMED there are always stale replies waiting, and accepting one gave the guarantee without the fact. The whole budget (~0.24 s) fits inside the 1 s failsafe timeout, so the two protections chain instead of competing. An unconfirmed STOP is loud and logged, but never blocked: a stop that only counts if the other side answers is not a stop, it is a request.'],
+
+  'sf.open.t': ['Kill-switch remoto: arquitetura fechada, por montar', 'Remote kill-switch: architecture closed, not yet built'],
   'sf.open.b': [
-    'Não existe ainda corte remoto independente do software. Está adiado por orçamento e é obrigatório antes de qualquer teste sem corda, autonomia livre ou operação afastada da margem. Duas opções em avaliação: um sistema RC a 2,4 GHz com canal dedicado ao corte de alta corrente, mais simples e desenhado para o efeito, ou um link LoRa com heartbeat, de maior alcance mas exigindo desenvolver a lógica de failsafe. Uma antena DVB foi avaliada e descartada — é de receção, não transmite.',
-    'There is still no remote cut-off independent of the software. It is deferred on budget grounds and is mandatory before any untethered test, free autonomy or operation away from the bank. Two options are under evaluation: a 2.4 GHz RC system with a dedicated channel driving a high-current cut-off, simpler and purpose-built, or a LoRa link with heartbeat, longer range but requiring the failsafe logic to be developed. A DVB antenna was evaluated and ruled out — it receives, it does not transmit.'
+    'O caminho de corte está decidido e não passa por software nenhum: um relé na linha positiva de cada casco, a jusante do fusível e da loop key, com a bobina alimentada pela bateria desse mesmo casco e comandada por um módulo RC-switch a partir de um canal PWM do recetor. Nem o Raspberry Pi nem o ESP32 estão nesse caminho, portanto cortar não depende de nenhum deles estar vivo. As loop keys XT90-S mantêm-se como corte manual. O que continua em aberto é só o sistema de rádio: FlySky FS-i6X com iA6B por orçamento, ou ELRS ER6 por alcance. Nada disto está montado, e continua a ser obrigatório antes de qualquer teste sem corda ou operação afastada da margem. Uma antena DVB foi avaliada e descartada — é de receção, não transmite.',
+    'The cut-off path is decided and no software sits on it: a relay in the positive line of each hull, downstream of the fuse and the loop key, its coil fed by that hull own battery and driven by an RC-switch module from a PWM channel of the receiver. Neither the Raspberry Pi nor the ESP32 is on that path, so cutting power does not depend on either of them being alive. The XT90-S loop keys remain as the manual cut. What is still open is only the radio system: FlySky FS-i6X with iA6B on budget, or ELRS ER6 on range. None of it is built yet, and it remains mandatory before any untethered test or operation away from the bank. A DVB antenna was evaluated and ruled out — it receives, it does not transmit.'
   ],
 
   /* ---------- software ---------- */
   'sw.title': ['Software', 'Software'],
   'sw.lead': [
-    'Organizado em packages com um orquestrador. Validado em simulação de ciclo fechado com comunicação real ao ESP32 — o modo NAV foi testado com o ESP32 a aceitar comandos, com a malha fechada pelo simulador e sem motores.',
-    'Organised in packages with an orchestrator. Validated in closed-loop simulation with real communication to the ESP32 — NAV mode was tested with the ESP32 accepting commands, the loop closed by the simulator and no motors connected.'
+    'Organizado em packages com um orquestrador. A malha de navegação está validada em simulação de ciclo fechado com comunicação real ao ESP32 — o modo NAV foi testado com o ESP32 a aceitar comandos, com a malha fechada pelo simulador e sem motores. A cadeia de paragem veio de uma revisão crítica do próprio código: quatro defeitos encontrados, quatro fechados.',
+    'Organised in packages with an orchestrator. The navigation loop is validated in closed-loop simulation with real communication to the ESP32 — NAV mode was tested with the ESP32 accepting commands, the loop closed by the simulator and no motors connected. The stop chain came out of a critical review of the code itself: four defects found, four closed.'
   ],
   'sw.1.t': ['SerialLink', 'SerialLink'],
   'sw.1.b': ['Ligação série robusta: tolera ESP32 ausente, faz buffer de linhas completas, descarta o lixo de arranque e garante STOP no fecho.',
              'Robust serial link: tolerates a missing ESP32, buffers complete lines, discards boot garbage and guarantees STOP on close.'],
   'sw.2.t': ['Máquina de estados', 'State machine'],
-  'sw.2.b': ['DISARMED ↔ ARMED / NAV. Arranque sempre em DISARMED, heartbeat 0/0 a 5 Hz quando armado, STOP com prioridade absoluta.',
-             'DISARMED ↔ ARMED / NAV. Always boots disarmed, 0/0 heartbeat at 5 Hz when armed, STOP with absolute priority.'],
+  'sw.2.b': ['DISARMED ↔ ARMED / NAV. Arranque sempre em DISARMED, heartbeat 0/0 a 5 Hz quando armado, STOP com prioridade absoluta. ARM e NAV só avançam com confirmação do ESP32 de que a trava de propulsão abriu — sem ela o sistema fica DISARMED e o motivo é escrito.',
+             'DISARMED ↔ ARMED / NAV. Always boots disarmed, 0/0 heartbeat at 5 Hz when armed, STOP with absolute priority. ARM and NAV only proceed once the ESP32 confirms the propulsion latch opened — without that the system stays DISARMED and the reason is written down.'],
   'sw.3.t': ['Heading hold', 'Heading hold'],
   'sw.3.b': ['Normalização do erro angular para (−180°, 180°] e controlador proporcional com saturação. O mixer converte throttle e steer em L/R com teto de 30 %.',
              'Angular error normalised to (−180°, 180°] and a proportional controller with saturation. The mixer converts throttle and steer into L/R with a 30 % ceiling.'],
@@ -209,8 +213,14 @@ export const T = {
   'sw.5.b': ['Um CSV por sessão, timestamp ao milissegundo e flush imediato. Eventos BOOT, SERIAL, STATE, TX, RX, STOP, HEADING e SHUTDOWN.',
              'One CSV per session, millisecond timestamps and immediate flush. BOOT, SERIAL, STATE, TX, RX, STOP, HEADING and SHUTDOWN events.'],
   'sw.6.t': ['Testes automáticos', 'Automated tests'],
-  'sw.6.b': ['Heading, mixer e navegação testados sem hardware, para que a lógica possa evoluir sem o barco montado.',
-             'Heading, mixer and navigation tested without hardware, so the logic can evolve without the boat assembled.'],
+  'sw.6.b': ['149 testes em Python e 182 verificações em C++, nenhum a precisar de hardware, para que a lógica possa evoluir sem o barco montado. O firmware é compilado pelo arduino-cli e, entre sessões de bancada, por um verificador contra cabeçalhos falsos do Arduino.',
+             '149 Python tests and 182 C++ checks, none of which need hardware, so the logic can evolve without the boat assembled. The firmware is compiled by arduino-cli and, between bench sessions, by a checker against stub Arduino headers.'],
+  'sw.7.t': ['Sensores reais', 'Real sensors'],
+  'sw.7.b': ['Leitores de IMU, GPS e ADC escritos com a mesma interface das fontes simuladas e a mesma regra: perante dúvida, não devolvem número. Sem calibração, sem fix ou com o canal em falta, levantam em vez de inventar. Nenhum viu ainda o seu sensor.',
+             'IMU, GPS and ADC readers written with the same interface as the simulated sources and the same rule: in doubt, return no number. Uncalibrated, without a fix or with the channel missing, they raise instead of inventing. None has met its sensor yet.'],
+  'sw.8.t': ['Comando sem terminal', 'Commanding without a terminal'],
+  'sw.8.b': ['Teclado quando há tty, um FIFO de controlo e SIGUSR1. O canal com menos capacidade — um sinal, sem argumentos e sem resposta — é o que leva o STOP, porque é o único que não pode faltar. Sem tty e sem FIFO o barco não arma: fica inerte, que é o lado seguro de falhar.',
+             'Keyboard when a tty exists, a control FIFO and SIGUSR1. The channel with the least capability — a signal, no arguments, no reply — is the one that carries STOP, because it is the only one that cannot be missing. Without a tty and without a FIFO the boat cannot arm: it stays inert, which is the safe direction to fail in.'],
   'sw.proto': ['Protocolo de comando', 'Command protocol'],
 
   /* ---------- estado ---------- */
@@ -228,14 +238,16 @@ export const T = {
   'stt.d4': ['Logging CSV com eventos ao milissegundo', 'CSV logging with millisecond events'],
   'stt.d5': ['Raspberry Pi operacional headless, I2C e Serial ativos', 'Raspberry Pi running headless, I2C and Serial enabled'],
   'stt.d6': ['Arquitetura mecânica v6.1 validada em 3D', 'Mechanical architecture v6.1 validated in 3D'],
+  'stt.d7': ['Trava de propulsão no ESP32: a resposta que a destranca foi observada em bancada', 'Propulsion latch on the ESP32: the reply that unlocks it was observed on the bench'],
+  'stt.d8': ['Firmware compilado pelo arduino-cli e gravado na placa', 'Firmware compiled by arduino-cli and flashed to the board'],
   'stt.w1': ['Massa: 6,0–6,5 kg por cálculo de volumes, nunca pesada', 'Mass: 6.0–6.5 kg from volume calculations, never weighed'],
   'stt.w2': ['Impulso, corrente e autonomia, todos a partir de datasheet', 'Thrust, current and endurance, all from datasheets'],
-  'stt.w3': ['Fusível principal de 100 A, dimensionamento teórico', '100 A main fuse, theoretical sizing'],
-  'stt.w4': ['Componentes de propulsão ainda não recebidos', 'Propulsion components not yet received'],
-  'stt.o1': ['Kill-switch remoto: RC 2,4 GHz ou LoRa com heartbeat', 'Remote kill-switch: 2.4 GHz RC or LoRa with heartbeat'],
+  'stt.w3': ['Consumo real da eletrónica, ainda por medir — o limiar de regresso depende dele', 'Real electronics consumption, still unmeasured — the return threshold depends on it'],
+  'stt.w4': ['Motores e waterjets ainda não recebidos', 'Motors and waterjets not yet received'],
+  'stt.o1': ['Sistema de rádio do kill-switch: FlySky FS-i6X + iA6B ou ELRS ER6', 'Kill-switch radio system: FlySky FS-i6X + iA6B or ELRS ER6'],
   'stt.o2': ['Modelo final das unidades de waterjet', 'Final waterjet unit selection'],
-  'stt.o3': ['Função final de cada bateria, após medições', 'Final role of each battery, after measurements'],
-  'stt.o4': ['Estratégia de Return-To-Home e telemetria em tempo real', 'Return-to-home strategy and real-time telemetry'],
+  'stt.o3': ['Trajeto de Return-To-Home — o gatilho já está decidido, o caminho não', 'Return-to-home path — the trigger is decided, the route is not'],
+  'stt.o4': ['Telemetria em tempo real', 'Real-time telemetry'],
 
   'stt.scope.t': ['Fora de âmbito, por decisão', 'Out of scope, by decision'],
   'stt.scope.b': [
@@ -247,7 +259,7 @@ export const T = {
   'f.project':  ['Projeto pessoal de engenharia', 'Personal engineering project'],
   'f.author':   ['Gonçalo Martins da Silva', 'Gonçalo Martins da Silva'],
   'f.school':   ['Engenharia Eletrotécnica e de Computadores · Instituto Superior Técnico', 'Electrical and Computer Engineering · Instituto Superior Técnico'],
-  'f.docs':     ['Arquitetura v1.11 · esquema elétrico v1.11 · modelo CAD v6.3', 'Architecture v1.11 · electrical schematic v1.11 · CAD model v6.3'],
+  'f.docs':     ['Arquitetura v1.13 · esquema elétrico v1.11 · modelo CAD v6.3', 'Architecture v1.13 · electrical schematic v1.11 · CAD model v6.3'],
   'f.note': [
     'Os valores apresentados mantêm o estatuto que têm na documentação técnica do projeto. Nenhum número de desempenho é ainda uma medição em água.',
     'The figures shown keep the status they hold in the project technical documentation. No performance figure here is yet a measurement on water.'

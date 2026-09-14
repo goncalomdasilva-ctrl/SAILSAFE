@@ -1510,3 +1510,264 @@ quinta-feira à tarde, e ambos os defeitos são de política, testáveis num PC.
 - Na bancada, confirmar por observação que o ESP32 responde mesmo
   `Parado. Propulsao DESTRAVADA` — a confirmação do STOP assenta nisso.
 - Unificar o teto de 30% num sítio só; porta série por `by-id`.
+
+### 2026-08-05 a 2026-09-12 (registo em atraso — bancada de 6 de agosto e montagem física)
+
+Trinta e nove dias sem entrada. A bancada de 6 de agosto aconteceu e não foi
+registada; o resto do período foi de férias, com trabalho de arquitetura e de
+código feito de cabeça e sem produzir um único commit. Esta entrada é escrita a
+13 de setembro e assume-se como reconstituição: o que aqui está é o que se sabe
+ao certo, e onde não se sabe está escrito que não se sabe.
+
+#### Trabalho realizado
+- **6 de agosto, bancada: o firmware foi gravado na placa.** É a primeira vez
+  que o binário sai do `arduino-cli` e entra no ESP32. Até aqui o firmware tinha
+  sido compilado (04-08) mas nunca gravado, e a distinção estava escrita como
+  limitação nesse dia.
+- **O ack foi confirmado por observação.** O ESP32 responde mesmo
+  `Parado. Propulsao DESTRAVADA` a um `L: 0 R: 0`. Era a primeira coisa a
+  confirmar segundo a entrada de 04-08, porque a confirmação do STOP e a prova
+  exigida ao ARM assentam nessa resposta e nada mais. Estava tirada da leitura
+  do `.ino`, e passou a estar observada.
+- **Montagem física numa placa de acrílico.** Furos e parafusos para o Raspberry
+  Pi e para o GPS; o BNO055, o ESP32 e o ADS1015 em breadboards pequenas coladas
+  à placa. Serve já os ensaios de bancada em segurança, com tudo preso e nada a
+  andar solto pela mesa.
+- **Soldaduras refeitas com acabamento decente**, com ajuda de quem repara
+  máquinas para viver. Não é cosmética: uma soldadura fria é o defeito
+  intermitente por excelência, aparece sob vibração e desaparece na bancada.
+- **Decidido que o acrílico passa a tabuleiro definitivo**, recortado para
+  suportar o ADS1015 e o Raspberry Pi dentro da caixa IP66.
+- **OPEN-005 fechada: o GPS liga à UART do GPIO**, em `/dev/serial0` a 9600.
+
+#### Decisões técnicas
+- **O tabuleiro de bancada e o tabuleiro definitivo são o mesmo.** Manter a
+  disposição das placas ao passar para dentro da caixa faz com que o que for
+  calibrado na bancada continue a valer depois de fechar. Isto importa
+  sobretudo ao BNO055: a calibração do magnetómetro depende do ferro e das
+  correntes que estão à volta, e mudar as placas de sítio invalida-a sem dar
+  sinal nenhum de que a invalidou.
+- **O corte à distância e a antena ficam para depois da água.** A ordem mudou,
+  a regra não: o corte manual pela loop key continua a ser suficiente enquanto
+  os ensaios forem com o barco preso e ao alcance da mão, e o corte remoto
+  continua a ser obrigatório antes do primeiro ensaio sem corda. O risco desta
+  ordem é conhecido e aceite — se algum ensaio de água acabar por acontecer sem
+  corda por conveniência do momento, esta decisão passa a ser um erro
+  retroativo.
+- **GPS na UART do GPIO e não por USB.** A UART ficou livre quando o ESP32
+  passou para USB (OPEN-004), e usá-la evita um segundo `/dev/ttyUSB*` a
+  disputar nome com o ESP32 — que é precisamente a pendência da porta por
+  `by-id`, ainda em aberto.
+
+#### Problemas / limitações
+- **Da bancada de 6 de agosto sobra a confirmação do ack e mais nada.** Não se
+  observou o ARM a ser recusado sem confirmação, nem o teto de 30% a recusar um
+  comando em hardware, nem a perda de série a desarmar dos dois lados. O
+  procedimento v1 tinha esses passos escritos e ficaram por fazer — ou foram
+  feitos e não ficaram registados, que para o efeito dá no mesmo.
+- **Nenhum sensor foi ainda ligado ao Raspberry Pi.** O BNO055, o GPS e o
+  ADS1015 estão montados e alimentados, e é tudo.
+- **O log esteve parado 39 dias, e é a segunda vez.** A primeira foram os quatro
+  dias do site (31-07 a 03-08). A causa é a mesma nas duas: trabalho que não
+  produz commits também não produz entradas, e o log está a seguir o git em vez
+  de seguir o projeto.
+- A bateria da eletrónica continua no modelo 3D com medidas de uma 2S
+  (35 × 105 × 25 mm) e o esquema elétrico v1.11 continua a dizer 2S.
+
+#### Resultado do dia
+- A cadeia de STOP deixou de assentar numa leitura do código e passou a assentar
+  numa observação.
+- O sistema tem, pela primeira vez, uma forma física: uma placa com tudo preso,
+  que é ao mesmo tempo a bancada e o tabuleiro que vai para dentro da caixa.
+
+#### Lições aprendidas
+- **Uma confirmação que nunca foi observada é uma hipótese bem escrita.** O ack
+  estava correto — mas isso soube-se a 6 de agosto, não antes, e entre as duas
+  datas o sistema inteiro dependia de uma linha lida num ficheiro.
+- **Um mês sem commits continua a ser um mês de decisões.** Três decisões de
+  arquitetura foram tomadas neste período (o tabuleiro, a ordem do corte
+  remoto, a ligação do GPS) e nenhuma delas ficou escrita na altura. O log
+  serve exatamente para as decisões que não deixam rasto no código, e foi
+  precisamente nessas que falhou.
+- **Gravar não é compilar, e compilar não era gravar.** A distinção estava
+  escrita como limitação a 4 de agosto e fechou-se dois dias depois. Vale a
+  pena procurar as outras limitações escritas que já se fecharam sem ninguém
+  as riscar.
+
+#### Próximo passo
+- Ligar os três sensores ao Pi, por procedimento escrito.
+- Registar a sessão no próprio dia.
+
+### 2026-09-13 (sense do ADS1015, leitor de GPS e correção do site)
+
+Sessão sem hardware à frente, véspera da primeira ligação dos sensores. Escreve-se
+o código que amanhã vai ser posto à prova e corrige-se o site, que andava a
+anunciar decisões que já estavam fechadas e a contradizer-se a si próprio.
+
+#### Trabalho realizado
+- **`sensors/ads1015.py` e `sensors/power_sense.py`:** o sense do documento
+  v1.11.1 passa a existir em código. Driver do conversor separado da
+  interpretação dos canais, porque um depende do chip e o outro da cablagem, e
+  as duas coisas mudam em alturas diferentes.
+- **`safety/battery_guard.py`:** o gatilho de regresso pela tensão da bateria da
+  eletrónica, que era a consequência de arquitetura da v1.12 e não tinha
+  implementação.
+- **`control/real_position.py`:** leitor NMEA do NEO-8M com a mesma interface
+  das fontes sintéticas, mais um `RealBoat` que junta GPS e IMU para o
+  `nav_step()` — escrito, não integrado.
+- **`tools/sense_bench.py` e `tools/gps_bench.py`:** um ensaio de bancada por
+  sensor, nenhum deles a falar com o ESP32, seguindo o padrão do
+  `heading_bench.py`.
+- **65 testes novos: 23 do sense, 14 da guarda e 28 do GPS. Total: 149 testes em
+  Python e 182 verificações em C++, nenhum a precisar de hardware.**
+- **`docs/SAILSAFE_procedimento_sensores_v1.pdf`**, escrito antes da sessão e
+  não depois, como o de 4 de agosto ensinou.
+- **Site corrigido.** Anunciava o kill-switch remoto como decisão em aberto
+  (fechado na v1.12 — só o rádio continua por decidir), dizia 2S/7,4 V para a
+  eletrónica em três sítios ao lado de «LiPo 3S 2200 mAh», falava num fusível
+  principal de 100 A que a sua própria tabela contradiz com 40 A por casco, e
+  não mencionava nada do trabalho de segurança de 30 de julho a 6 de agosto.
+
+#### Decisões técnicas
+- **O PGA é reescrito a cada conversão, não uma vez no arranque.** O ADS1015 não
+  tem memória: qualquer reset devolve-o aos ±2,048 V, onde os divisores de 5k/1k
+  saturam a 12,29 V referidos à bateria — abaixo de uma 3S carregada. Como cada
+  conversão single-shot já exige uma escrita ao registo de configuração,
+  reafirmar o ganho nessa escrita não custa nada e fecha o buraco.
+- **Saturação não é um valor.** Uma contagem no topo da escala não quer dizer
+  «muita tensão», quer dizer «isto está fora do que eu consigo medir».
+  `read_volts()` levanta em vez de devolver 24,6 V. É o mesmo erro do ack antigo
+  do STOP: transformar a ausência de informação em informação.
+- **Um canal que não existe devolve `None`, nunca 0.** O ACS758 ainda não foi
+  comprado. Um zero seria indistinguível de «casco parado, sem consumo», que é
+  exatamente a leitura que se espera de um barco à deriva.
+- **A guarda de bateria é latching e a cegueira conta como motivo para
+  regressar.** Uma bateria descarregada recupera tensão assim que a carga
+  alivia; sem trava, o barco oscilaria entre abortar e continuar, cada vez com
+  menos energia. E ficar sem leitura é perder precisamente o aviso que faria
+  voltar a tempo — continuar às cegas troca uma certeza pequena por uma
+  incerteza grande.
+- **A guarda recusa-se a decidir com leituras não calibradas.** Com resistores
+  de 5 %, o erro a 12,6 V é de ±1,09 V, maior do que a distância entre «cheia»
+  e «no limite». Um limiar aplicado a esses números decide ao acaso.
+- **O leitor de GPS fica com a trama mais recente do buffer, não com a
+  primeira.** É a mesma armadilha do ack do STOP: o que está na fila não acabou
+  de acontecer, e parar na primeira é navegar com passado enquanto o presente
+  continua a chegar.
+- **A posição 0,0 é rejeitada.** É uma coordenada válida ao largo da África
+  ocidental, e é o que alguns módulos reportam quando não têm fix.
+
+#### Problemas / limitações
+- **Nada disto viu um sensor.** As razões de divisor, o PGA e a política de NMEA
+  estão todas escritas a partir de datasheets e do documento de sense. A sessão
+  de amanhã é que diz se estão certas.
+- **O `RealBoat` não está integrado.** O `nav_step()` do `main.py` continua a
+  fechar a malha no barco sintético, e falta o `main.py` apanhar
+  `PositionUnavailable` e `HeadingUnavailable` e ir para estado seguro, como já
+  faz quando perde a série. Enquanto isso não existir, o leitor de GPS serve a
+  bancada e não a água.
+- **A declinação magnética continua a 0,0** no `real_heading.py`, e o BNO055 foi
+  colado a uma placa com o Pi e o ESP32 por perto. As duas coisas somam-se no
+  mesmo sítio: o rumo verdadeiro.
+- Continuam por fazer, desde 4 de agosto: unificar o teto de 30% (`SAFE_MAX` e
+  `PERCENT_MAX_SAFE` continuam a ser o mesmo número em dois ficheiros) e a porta
+  série por `by-id`.
+- O esquema elétrico v1.11 continua a dizer 2S para a eletrónica. O site já foi
+  corrigido, o KiCad não — e agora são duas fontes a discordar em vez de duas a
+  concordar no erro.
+
+#### Resultado do dia
+- O sense e o GPS deixam de ser documentos e passam a ser código com testes.
+- O site voltou a dizer o que o projeto é, em vez do que o projeto era em julho.
+
+#### Lições aprendidas
+- **Um site desatualizado não envelhece: contradiz-se.** As três contradições
+  encontradas hoje não vieram de o site estar velho, vieram de partes dele
+  terem sido atualizadas e outras não. Uma fonte parada é honesta; uma fonte
+  atualizada por partes mente com ar de estar em dia.
+- **A mesma armadilha aparece em sítios diferentes com roupa diferente.** Ler o
+  buffer do GPS e ler o buffer do ack são o mesmo problema — aceitar como
+  presente o que estava em fila. Foi preciso resolvê-lo uma vez para o
+  reconhecer à segunda.
+- **Escrever o procedimento antes tira decisões do momento em que se está a
+  meio.** O passo que diz para *não* calibrar o ADS nesta sessão é o exemplo: a
+  meio da bancada, com a ferramenta à mão, calibrar parece obviamente a coisa
+  certa a fazer.
+
+#### Próximo passo
+- Sessão de sensores pelo `SAILSAFE_procedimento_sensores_v1.pdf`, e registo no
+  próprio dia.
+- Com a dispersão do GPS medida, fixar o raio de chegada e a tolerância do ponto
+  de regresso — que até aqui são números de catálogo.
+- Decidir o rádio (OPEN-011), que também decide se há ou não telemetria de
+  retorno (OPEN-007).
+
+### 2026-09-14 (inventário: loop key em mãos, divisores passam a 10k/2k)
+
+Entrada curta, escrita no próprio dia e antes da sessão de sensores, que é
+precisamente o que faltou em agosto.
+
+#### Trabalho realizado
+- **A loop key XT90-S está em mãos.** Deixa de ser item de compra e passa a item
+  de montagem. É a condição que o projeto impôs a si próprio para qualquer
+  energização de ESC, e era a única peça em falta para o protótipo poder existir.
+- **Inventário dos resistores: o par disponível é 10 kΩ / 2 kΩ**, e não os
+  5 kΩ / 1 kΩ que a revisão 2 do documento de sense assumia.
+- Documento de sense passa à **revisão 3**; arquitetura v1.13, procedimento de
+  ensaio e comentários do código atualizados em conformidade.
+- O procedimento ganha uma **secção G** para montar e verificar o primeiro
+  divisor, com a calibração condicionada a o condensador já estar montado.
+- Condensadores de filtro por confirmar — podem não existir.
+
+#### Decisões técnicas
+- **Divisores a 10k/2k, e o rácio não muda.** 2/(10+2) é exatamente o mesmo 1/6
+  que 1/(5+1), pelo que o fundo de escala (24,6 V), a resolução (12 mV), as
+  tabelas de conversão e o limite de saturação com o ganho errado (12,29 V)
+  ficam todos iguais. O `DIVIDER_RATIO` do `power_sense.py` continua a ser
+  literalmente o mesmo número. Mudam só as duas grandezas que dependem dos
+  valores absolutos e não do quociente: a impedância de fonte duplica
+  (833 Ω → 1667 Ω) e a corrente permanente por divisor cai para metade
+  (2,10 mA → 1,05 mA).
+- **O condensador de filtro passa de 2,2 µF a 1 µF**, para manter o mesmo corte
+  de cerca de 90 Hz com a impedância nova. Qualquer valor entre 1 e 4,7 µF
+  serve — a tensão de bateria é um sinal lento e mesmo a constante de tempo mais
+  longa da tabela é irrelevante para quem lê uma vez por segundo.
+- **A falta de condensadores não bloqueia esta fase.** O condensador existe para
+  rejeitar o ruído de comutação dos ESCs; enquanto não houver ESCs a comutar não
+  há o que rejeitar, e os divisores podem ser montados, lidos e calibrados sem
+  ele. Passa a ser obrigatório antes do primeiro ensaio com motores a girar, e a
+  calibração tem de ser refeita depois de o pôr — a fuga de um eletrolítico
+  entra no rácio.
+- **A saída do divisor é medida ao multímetro antes de tocar no ADS.** Trocar os
+  dois resistores dá 5/6 em vez de 1/6, ou seja 10,5 V numa entrada que aguenta
+  4,096 V. É um erro de montagem trivial de cometer e que o ADS1015 não
+  sobrevive a diagnosticar, por isso a verificação acontece com o multímetro e
+  com o fio ainda desligado.
+
+#### Problemas / limitações
+- **O inventário foi de memória e não por contagem.** São precisos três de cada
+  resistor, um por divisor, e isso não está confirmado. Um divisor a menos
+  descobre-se com o ferro já quente.
+- Mais impedância de fonte é melhor para a bateria e pior para o conversor.
+  1667 Ω continua muito abaixo do que o ADS1015 tolera, mas a margem para uma
+  futura divisão ainda mais alta encolheu.
+
+#### Resultado do dia
+- O protótipo deixa de ter peças em falta para a cadeia de segurança: a loop key
+  fecha a condição de energização.
+- Uma mudança de componentes que parecia obrigar a rever o sense inteiro acabou
+  em duas linhas de números.
+
+#### Lições aprendidas
+- **Escrever em função do rácio e não dos valores foi o que tornou isto barato.**
+  Praticamente todo o documento de sense está escrito em função de k, e por isso
+  trocar os dois resistores não invalidou uma única tabela. Se as tabelas
+  estivessem escritas em função de 5k e 1k, hoje era um dia de reescrita.
+- **A revisão 1 já tinha 10 k, e o problema nunca foi o divisor.** Voltar quase
+  ao par inicial e continuar a precisar exatamente da mesma correção de PGA
+  confirma o diagnóstico de julho: o divisor era o suspeito, o ganho é que era o
+  culpado.
+
+#### Próximo passo
+- Contar os componentes antes de pegar no ferro.
+- Sessão de sensores pelo procedimento, e registo no próprio dia.

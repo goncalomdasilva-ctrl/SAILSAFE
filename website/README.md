@@ -132,6 +132,6 @@ Os componentes de propulsão ainda não chegaram fisicamente ao projeto, pelo qu
 Projeto pessoal de engenharia de **Gonçalo Martins da Silva**
 Engenharia Eletrotécnica e de Computadores · Instituto Superior Técnico
 
-Documentação de arquitetura v1.11 · modelo CAD v6.3
+Documentação de arquitetura v1.13 · modelo CAD v6.3
 
 [three.js](https://threejs.org) r169 — licença MIT, incluída em `assets/vendor/three/LICENSE`.

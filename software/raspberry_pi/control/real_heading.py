@@ -163,20 +163,36 @@ class RealHeading:
         return self._fail_count
 
 
-def create_bno055(i2c=None, **kwargs):
+# Enderecos possiveis do BNO055. O pino ADD do modulo escolhe entre os dois:
+# a GND da 0x28, a VDD da 0x29. Deixado ao ar, NAO da erro -- da um endereco
+# indefinido, e o sensor aparece e desaparece do barramento.
+ADDRESS_ADD_LOW = 0x28
+ADDRESS_ADD_HIGH = 0x29
+
+
+def create_bno055(i2c=None, address=ADDRESS_ADD_LOW, **kwargs):
     """Constroi um RealHeading ligado ao BNO055 fisico.
 
     O import fica aqui dentro de proposito: control/real_heading.py tem de
     poder ser importado (e testado) numa maquina sem adafruit-blinka
     instalado. Nada em cima depende de hardware.
 
+    O `address` existe porque o endereco e uma propriedade da CABLAGEM e nao
+    do sensor: depende de a que ficou preso o pino ADD do modulo. Com 0x28
+    por omissao, que e o que o projeto usa (ADD a GND), mas passavel sem
+    ter de mexer no ficheiro quando a placa estiver ligada ao contrario.
+
     Requer, no Pi:  pip install adafruit-circuitpython-bno055
-    e o I2C ligado (raspi-config -> Interface Options -> I2C).
+    e o barramento I2C configurado. Ver secao 22.7 do documento de
+    arquitetura -- alem de `dtparam=i2c_arm=on`, este sensor exige
+    `dtparam=i2c_arm_baudrate=10000` no config.txt, porque usa clock
+    stretching e o controlador do Broadcom trata isso mal: em vez de erro,
+    da leituras corrompidas.
     """
     import board                      # noqa: PLC0415
     import adafruit_bno055            # noqa: PLC0415
 
     if i2c is None:
         i2c = board.I2C()
-    sensor = adafruit_bno055.BNO055_I2C(i2c)
+    sensor = adafruit_bno055.BNO055_I2C(i2c, address=address)
     return RealHeading(sensor, **kwargs)

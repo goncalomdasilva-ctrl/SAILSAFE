@@ -5,6 +5,12 @@ Autonomous surface catamaran focused on control systems development.
 ## Overview
 SAILSAFE is a personal engineering project focused on building an autonomous surface vehicle with differential propulsion, embedded control, and waypoint navigation. It is developed as a real-world platform for learning and applying control systems, embedded software and safety engineering.
 
+> **Project history.** SAILSAFE has been in development since February 2026. The git
+> history in this repository starts later than that — it was re-initialised during a
+> restructure — so commit dates are not a record of the project's timeline. The actual
+> development record, with dated entries from the start, is in
+> [`Engineering_log.md`](Engineering_log.md).
+
 ## Current Phase
 Phase 1 — software MVP validated in simulation; mechanical build in preparation (architecture v6.1).
 
@@ -16,8 +22,12 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
 - Control path independent of an interactive terminal (FIFO + `SIGUSR1`), so the process is
   commandable under systemd or `nohup`
 - Per-session CSV logging with millisecond timestamps
+- Power sense (ADS1015) and GPS position reader written and covered by tests, but
+  neither has met its sensor yet — the PGA correction, the divider ratios and the
+  NMEA policy are all still theory until the bench says otherwise
 - Mechanical architecture v6.1: batteries housed inside the hulls, IP66 electronics box at deck level
-- Motors, ESCs and GPS integration pending (blocked on physical kill-switch chain — safety rule)
+- Motors and ESCs pending (blocked on physical kill-switch chain — safety rule)
+- GPS wiring decided (OPEN-005): NMEA on the Pi's GPIO UART, `/dev/serial0` at 9600
 
 ## Safety Design
 - Boot always in a safe (DISARMED) state; STOP has absolute priority
@@ -35,6 +45,10 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
   (`echo s > /tmp/sailsafe.ctl`) and `SIGUSR1` as STOP. The signal path is the only one
   that cannot be missing, which is why it carries the stop
 - Firmware-enforced 30% power ceiling for bench testing
+- Return trigger on the electronics battery: it drains on the clock rather than on
+  thrust, and when it goes, radio, logging and control go together. The guard latches —
+  a battery that recovers voltage once the load drops does not un-abort a mission — and
+  refuses to decide at all on uncalibrated readings
 - Manual power cut (XT90 loop key) required before any ESC/motor energisation; remote kill switch (2.4 GHz RC / LoRa) planned before autonomous operation
 
 ## Main Components
@@ -47,7 +61,7 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
 - `docs/` → architecture and project documentation
 - `hardware/` → electrical and mechanical files (schematics, blueprints, CAD)
 - `software/esp32/` → ESP32 firmware
-- `software/raspberry_pi/` → onboard software (communication, control, telemetry, tests)
+- `software/raspberry_pi/` → onboard software (communication, control, sensors, safety, telemetry, tests)
 
 ## Running the software (bench)
 ```bash
@@ -59,6 +73,9 @@ python3 software/raspberry_pi/tests/test_navigation.py
 python3 software/raspberry_pi/tests/test_real_heading.py
 python3 software/raspberry_pi/tests/test_stop_confirmado.py
 python3 software/raspberry_pi/tests/test_commands.py
+python3 software/raspberry_pi/tests/test_sense.py
+python3 software/raspberry_pi/tests/test_battery_guard.py
+python3 software/raspberry_pi/tests/test_real_position.py
 
 # ESP32 safety logic (runs on a PC, no board needed)
 g++ -std=c++11 -Wall -o /tmp/tms software/esp32/tests/test_motor_safety.cpp && /tmp/tms
@@ -74,7 +91,22 @@ python3 software/raspberry_pi/main.py --sim         # NAV in simulation, no prop
 python3 software/raspberry_pi/main.py --sim-motores # NAV in simulation, motors DO run
 ```
 
-84 Python tests and 182 C++ checks, none of which need hardware.
+149 Python tests and 182 C++ checks, none of which need hardware.
+
+### Bench tools
+Each one exercises exactly one sensor and sends nothing to the ESP32.
+
+```bash
+cd software/raspberry_pi
+python3 -m tools.heading_bench --fake     # BNO055: heading hold, turned by hand
+python3 -m tools.sense_bench --fake       # ADS1015: channels, and one-point calibration
+python3 -m tools.sense_bench --ganho-errado   # shows the saturation the wrong PGA causes
+python3 -m tools.gps_bench --fake         # NEO-8M: fix quality, not just "has a position"
+```
+
+Drop `--fake` for the real sensor. `sense_bench --calibrar a2 12.60` stores the scale
+factor for one channel against a multimeter reading; without that file the readings are
+produced but marked uncalibrated, and the return trigger refuses to act on them.
 
 ### Commanding the process
 `a`=ARM `n`=NAV `d`=DISARM `s`=STOP `q`=quit, over any of three paths:
@@ -98,8 +130,9 @@ the motor commands without sending them; `--sim-motores` actually drives the ESC
 only for a boat clamped to the bench, out of the water.
 
 ## Documentation
-- System architecture: `docs/SAILSAFE_Architecture_v1_12.docx`
+- System architecture: `docs/SAILSAFE_Architecture_v1_13.docx`
 - Engineering log: `Engineering_log.md`
+- Bench procedure (sensors): `docs/SAILSAFE_procedimento_sensores_v1.pdf`
 - Mechanical blueprint: `hardware/mechanical/SAILSAFE_blueprint_madeira_v6_1.pdf`
 
 ## License
