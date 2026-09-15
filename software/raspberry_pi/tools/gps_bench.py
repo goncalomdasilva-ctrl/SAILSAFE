@@ -26,8 +26,7 @@ import argparse
 import sys
 import time
 
-from control.real_position import (PositionUnavailable, RealPosition,
-                                   parse_sentence)
+from control.real_position import PositionUnavailable, RealPosition
 
 
 class FakePort:
@@ -104,13 +103,15 @@ def main(argv=None):
     primeiro_fix = None
     try:
         while True:
+            # Um leitor so: as tramas passam sempre pelo poll(), e o
+            # mostrador de tramas cruas e apenas um observador. Ler a
+            # porta em dois sitios faz desaparecer metade das tramas --
+            # e sao as boas que desaparecem, porque sao as que interessam.
+            mostrar = None
             if args.cru:
-                for _ in range(5):
-                    linha = gps._readline()          # noqa: SLF001
-                    if not linha:
-                        break
-                    marca = "ok " if parse_sentence(linha) else "-- "
-                    print(f"  {marca}{linha.strip()}")
+                def mostrar(linha, fix):
+                    print(f"  {'ok ' if fix else '-- '}{linha.strip()}")
+            gps.poll(on_line=mostrar)
 
             try:
                 posicao, motivo = gps.position(), ""

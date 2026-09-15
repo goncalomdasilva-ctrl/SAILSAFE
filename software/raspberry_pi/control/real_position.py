@@ -217,13 +217,20 @@ class RealPosition:
             return linha.decode("ascii", errors="replace")
         return linha or ""
 
-    def poll(self):
+    def poll(self, on_line=None):
         """Le o que estiver no buffer e guarda o fix mais RECENTE.
 
         Le ate max_lines tramas e fica com a ultima aceitavel, em vez de
         parar na primeira. Uma trama que esta na fila nao acabou de
         acontecer: parar na primeira e ler passado enquanto o presente
         continua a chegar.
+
+        `on_line(linha, fix)` e chamado para cada trama lida, com o Fix
+        que ela produziu ou None. Existe para quem quiser VER as tramas
+        (o tools/gps_bench.py) sem as ler da porta por sua conta: duas
+        leituras da mesma porta fazem com que cada lado fique com metade
+        das tramas, e as boas tendem a cair no lado que so as mostra.
+        Um leitor so, e quem quiser observar passa por aqui.
 
         Devolve o numero de tramas lidas.
         """
@@ -239,9 +246,13 @@ class RealPosition:
 
             if not nmea_checksum_ok(linha):
                 self._bad_checksum += 1
+                if on_line is not None:
+                    on_line(linha, None)
                 continue
 
             fix = parse_sentence(linha)
+            if on_line is not None:
+                on_line(linha, fix)
             if fix is None:
                 # Trama integra que nao da posicao: tipo que nao interessa,
                 # ou modulo ainda sem fix. Normal, nao e defeito.

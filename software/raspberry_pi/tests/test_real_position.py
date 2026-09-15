@@ -251,6 +251,27 @@ def test_arranque_a_frio_nao_conta_como_corrompido():
     assert st.bad_checksum == 0 and st.no_fix == st.seen
 
 
+def test_on_line_ve_todas_as_tramas_sem_as_roubar():
+    # O defeito de 15-09: o mostrador de tramas cruas lia a porta por sua
+    # conta, ficava com as tramas boas, e o contador dizia "aceites 0" com
+    # posicoes validas no ecra. Observar nao pode consumir.
+    vistas = []
+    p = RealPosition(FakePort([GGA_SEM_FIX, GGA_BOM]))
+    p.poll(on_line=lambda linha, fix: vistas.append((linha.strip(), fix is not None)))
+    assert len(vistas) == 2
+    assert vistas[1][1] is True                 # a GGA_BOM produziu Fix
+    assert p.stats.accepted == 1                # e chegou ao estado
+    assert p.position() is not None             # e da posicao
+
+
+def test_on_line_tambem_ve_as_corrompidas():
+    partida = GGA_BOM.strip()[:-2] + "00\r\n"
+    vistas = []
+    p = RealPosition(FakePort([partida]))
+    p.poll(on_line=lambda linha, fix: vistas.append(fix))
+    assert vistas == [None] and p.stats.bad_checksum == 1
+
+
 def test_max_lines_limita_o_poll():
     p = RealPosition(FakePort([GGA_BOM] * 100), max_lines=5)
     assert p.poll() == 5

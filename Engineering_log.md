@@ -1998,3 +1998,116 @@ melhor hardware do outro lado do barramento.
 - Em paralelo, e sem depender do IMU: GPS na UART do GPIO (secção E do
   procedimento), montagem dos três divisores 10k/2k e os canais de tensão do
   ADS1015, `git pull` no Pi, e o nome `by-id` da porta do ESP32.
+
+### 2026-09-15 (sessão 2 — GPS a funcionar, e dois defeitos meus pelo caminho)
+
+Primeira sessão com um sensor a dar números reais. O GPS ficou validado; o rumo
+continua parado à espera da placa nova. Pelo meio apanharam-se dois defeitos na
+própria ferramenta de diagnóstico, que é a parte mais instrutiva do dia.
+
+#### Trabalho realizado
+- **UART do GPIO ligada e verificada.** Faltava o `enable_uart=1` — o
+  `dtoverlay=disable-bt` escolhe *qual* UART vai aos pinos, mas não liga
+  nenhuma. Com os dois, `/dev/serial0` passa a apontar para `ttyAMA0`, que é a
+  PL011 e tem relógio próprio. O `cmdline.txt` já não tinha `console=serial0`,
+  portanto a consola de login não estava a ocupar a porta.
+- **NEO-8M ligado e a comunicar.** TX do módulo no pino 10, RX no pino 8, 3,3 V
+  e massa. Uma primeira tentativa deu zero tramas — cabos nos pinos errados,
+  corrigido à vista.
+- **Fix obtido e estável.** Ao fim de ~16 s de arranque quente: estado `A`,
+  qualidade `1`. Ao fim de treze minutos: **8 satélites, HDOP 1,05**, e
+  **2 600 tramas sem um único checksum mau**.
+- **Dispersão medida com o receptor parado durante 10 minutos** (597 fixes,
+  guardados em `logs/gps_dispersao.csv`):
+
+  | | valor |
+  |---|---|
+  | caixa | **31,4 m N-S × 4,3 m E-W** |
+  | raio mediano | 8,3 m |
+  | raio a 95 % | 18,7 m |
+  | raio máximo | 19,9 m |
+  | satélites | 5 a 8 |
+  | HDOP | 1,05 a 2,77 (591 de 597 abaixo de 2,5) |
+
+#### O que a dispersão diz
+**A assimetria é o resultado, não o número isolado.** Trinta e um metros num eixo
+e quatro no outro não é ruído — ruído seria redondo. É deriva, e numa direção só.
+
+E contrasta com o curto prazo: entre as 20:44:07 e as 20:44:16 a posição andou
+**31 cm em norte-sul e 40 cm em este-oeste**. Ou seja, o receptor é preciso ao
+segundo e arrasta-se ao longo dos minutos. Precisão boa, exatidão a prazo má — o
+retrato de metade do céu tapada por uma parede, com os satélites todos do mesmo
+lado e sinal a ressaltar no edifício.
+
+**Os 6 fixes com HDOP acima de 2,5 foram filtrados pela política, e não é aí que
+está o problema.** A deriva acontece com HDOP de 1,05. O filtro faz o seu
+trabalho e mesmo assim não protege disto — é informação útil sobre os limites do
+critério que escolhemos.
+
+**Medição feita a um parapeito, e portanto pessimista.** Água aberta é o melhor
+ambiente que um GPS pode ter: céu inteiro, zero reflexões de edifícios. Estes
+15–20 m ficam registados como **limite superior provisório**, a refazer no local
+com o barco montado antes de fixar o raio de chegada e a tolerância do ponto de
+regresso.
+
+#### Dois defeitos na ferramenta, ambos meus
+- **Contador único a mentir.** O `gps_bench` contava como "rejeitada" qualquer
+  trama que não produzisse posição — e num arranque a frio *nenhuma* produz,
+  além de que `GSA`, `GSV` e `VTG` nunca produzem por não serem dos tipos que
+  interessam. A heurística via 100 % de rejeição e anunciava "baud errado" com a
+  cablagem perfeita. Passaram a ser **quatro contadores**: `checksum mau` (única
+  coisa que aponta para ligação), `sem fix` (trama íntegra sem posição — normal),
+  `recusadas` (fix que falhou nos critérios) e `aceites`.
+- **Dois leitores da mesma porta.** O mostrador de tramas cruas (`--cru`) lia a
+  porta por sua conta, antes do `poll()`. Ficava com as tramas boas e o contador
+  só via as sobras: o ecrã mostrava `ok $GPRMC ... A ...` com posição válida
+  enquanto a linha de estado dizia `aceites 0` e o fix envelhecia até 9 s. O
+  `poll()` passou a aceitar um observador (`on_line`) e o mostrador passou a
+  observar em vez de consumir.
+- Cinco testes novos, dois deles a reproduzir exatamente estes dois defeitos.
+  **Total: 153 testes em Python e 182 verificações em C++.**
+
+#### Problemas / limitações
+- **O rumo continua sem existir.** A placa nova ainda não chegou.
+- O `max_stale_s=2,0` do `RealPosition` é pouca folga para um módulo a 1 Hz:
+  basta perder uma mensagem e está no limite. Hoje o que o disparou foi o
+  defeito dos dois leitores, mas o número merece ser revisto com dados reais.
+- O tempo até ao primeiro fix medido (1 s no script da dispersão, 16 s no
+  `gps_bench`) **não é um TTFF a frio** — o módulo já estava fixo. O TTFF a frio
+  fica por medir.
+- A dispersão foi medida sem o barco montado e sem a eletrónica toda a
+  trabalhar ao lado da antena. Falta saber quanto é que o próprio barco piora
+  isto.
+
+#### Resultado do dia
+- **O primeiro sensor do projeto está validado com números medidos**, e não com
+  datasheets: o GPS lê, fixa, e a qualidade do fix é conhecida.
+- A ferramenta de diagnóstico passou a dizer a verdade — o que, num dia em que
+  ela mentiu duas vezes, vale tanto como o sensor.
+
+#### Lições aprendidas
+- **Um contador que agrega causas diferentes é um alarme falso à espera de
+  acontecer.** "Não deu posição" tinha quatro causas com remédios opostos, e
+  juntá-las fazia um arranque normal parecer avaria de cablagem. A regra que o
+  projeto já tinha escrita para os alarmes vale igual para os contadores: um
+  número que dispara quando não se passa nada ensina a ignorá-lo.
+- **Observar não pode consumir.** Duas leituras da mesma fonte fazem cada lado
+  ficar com metade — e, pior, a metade que interessa tende a cair no lado que só
+  mostra. É a terceira vez que este projeto tropeça na mesma família de
+  problema: o ack do STOP lido de um buffer com restos, a trama mais recente
+  contra a mais antiga, e agora isto.
+- **Ferramentas de diagnóstico precisam de testes como o resto.** Os dois
+  defeitos de hoje estavam em código escrito para ajudar a encontrar defeitos —
+  e ambos apontaram o dedo ao hardware, que estava bom. Uma ferramenta que mente
+  custa mais do que a ausência dela.
+- **A forma do erro diz mais do que o tamanho.** Trinta metros de dispersão
+  parecem um mau receptor; trinta por quatro dizem "parede a tapar metade do
+  céu". A geometria do erro apontou a causa que o valor sozinho escondia.
+
+#### Próximo passo
+- Repetir a dispersão a céu aberto, para separar "é o módulo" de "era a janela".
+  Não urgente: o número que conta é o do local, com o barco montado.
+- Montar os três divisores 10k/2k e os canais de tensão do ADS1015, que já está
+  provado estável no barramento.
+- Quando a placa do BNO055 chegar: se for a da Devantech, **fechar o link de I2C
+  antes de a ligar**.

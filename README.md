@@ -22,12 +22,23 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
 - Control path independent of an interactive terminal (FIFO + `SIGUSR1`), so the process is
   commandable under systemd or `nohup`
 - Per-session CSV logging with millisecond timestamps
-- Power sense (ADS1015) and GPS position reader written and covered by tests, but
-  neither has met its sensor yet — the PGA correction, the divider ratios and the
-  NMEA policy are all still theory until the bench says otherwise
+- **GPS validated on hardware** (15 Sep): NEO-8M on the Pi's GPIO UART, 2 600 frames
+  without a single bad checksum, fix with 8 satellites and HDOP 1.05. Short-term
+  wander measured at ~30 cm over 10 s; slow drift over 10 min reached a 31 m × 4 m
+  box at a window sill, with half the sky blocked — a pessimistic bound, to be
+  re-measured on open water before the waypoint arrival radius is fixed
+- **Heading blocked**: the BNO055 module is faulty (internal rail at 2.7 V with 4.7 V
+  in, and ~0.4 mA of leakage on SDA, which poisoned the whole I2C bus). Replacement
+  ordered; see `Engineering_log.md` for the diagnosis
+- Power sense (ADS1015) written and covered by tests, and the chip answers reliably on
+  the bus, but the dividers are not built yet — the PGA correction and the divider
+  ratios stay theory until they are
 - Mechanical architecture v6.1: batteries housed inside the hulls, IP66 electronics box at deck level
 - Motors and ESCs pending (blocked on physical kill-switch chain — safety rule)
-- GPS wiring decided (OPEN-005): NMEA on the Pi's GPIO UART, `/dev/serial0` at 9600
+- GPS wiring closed (OPEN-005): NMEA on the Pi's GPIO UART, `/dev/serial0` at 9600
+- Return point defined (closes OPEN-006 on the point): the position recorded once at ARM,
+  averaged over validated fixes and never rewritten; straight-line return, which is only
+  admissible on open water within sight of the operator
 
 ## Safety Design
 - Boot always in a safe (DISARMED) state; STOP has absolute priority
@@ -55,13 +66,50 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
 - Raspberry Pi 4 (high-level control, navigation, logging — Python)
 - ESP32 (real-time motor control and failsafe — C++/Arduino)
 - 2 brushless motors with ESCs (waterjets)
-- GPS, IMU (BNO055), ADC (ADS1015)
+- GPS NEO-8M, IMU BNO055, ADC ADS1015 — all three on the Pi (GPS on UART, the other two on I2C)
 
 ## Repository Structure
 - `docs/` → architecture and project documentation
 - `hardware/` → electrical and mechanical files (schematics, blueprints, CAD)
 - `software/esp32/` → ESP32 firmware
 - `software/raspberry_pi/` → onboard software (communication, control, sensors, safety, telemetry, tests)
+
+## Raspberry Pi setup
+Two firmware parameters are conditions for the system to work at all, not bench tweaks.
+A reinstall without them gives a boat with no heading and no sense, and nothing reports
+an error that points at the cause.
+
+```
+# /boot/firmware/config.txt
+dtparam=i2c_arm=on              # without it /dev/i2c-1 does not exist
+dtparam=i2c_arm_baudrate=10000  # the BNO055 clock-stretches and the Broadcom I2C
+                                # controller mishandles it: corrupted reads, no error
+enable_uart=1                   # without it /dev/serial0 does not exist
+dtoverlay=disable-bt            # puts the PL011 on the GPIO; the mini-UART's baud rate
+                                # follows the core clock and drifts with CPU load
+```
+
+Also, in `raspi-config` → Interface Options → Serial Port: login shell over serial **no**,
+serial hardware **yes**. Verify what actually took effect, because a parameter that lands
+inside a conditional section of `config.txt` is ignored in silence:
+
+```bash
+ls -l /dev/serial0     # must point at ttyAMA0, not ttyS0
+i2cdetect -y 1         # 0x28 (BNO055) and 0x48 (ADS1015)
+for f in /proc/device-tree/soc/i2c@*/clock-frequency; do
+  echo -n "$f: "; od -An -tx1 "$f" | tr -d " \n"; echo
+done                   # i2c@7e804000 must read 00002710 (10000)
+```
+
+Both I2C devices need their address pin tied by a wire — `ADD` to GND on the BNO055
+(0x28), `ADDR` to GND on the ADS1015 (0x48). A floating address pin does not fail: it
+gives an address that changes, and a device that appears and disappears.
+
+Dependencies on the Pi:
+
+```bash
+pip install smbus2 pyserial adafruit-circuitpython-bno055 --break-system-packages
+```
 
 ## Running the software (bench)
 ```bash
@@ -91,7 +139,7 @@ python3 software/raspberry_pi/main.py --sim         # NAV in simulation, no prop
 python3 software/raspberry_pi/main.py --sim-motores # NAV in simulation, motors DO run
 ```
 
-149 Python tests and 182 C++ checks, none of which need hardware.
+153 Python tests and 182 C++ checks, none of which need hardware.
 
 ### Bench tools
 Each one exercises exactly one sensor and sends nothing to the ESP32.
@@ -102,11 +150,20 @@ python3 -m tools.heading_bench --fake     # BNO055: heading hold, turned by hand
 python3 -m tools.sense_bench --fake       # ADS1015: channels, and one-point calibration
 python3 -m tools.sense_bench --ganho-errado   # shows the saturation the wrong PGA causes
 python3 -m tools.gps_bench --fake         # NEO-8M: fix quality, not just "has a position"
+python3 -m tools.gps_bench --cru          # shows every frame, and whether it parsed
 ```
 
 Drop `--fake` for the real sensor. `sense_bench --calibrar a2 12.60` stores the scale
 factor for one channel against a multimeter reading; without that file the readings are
 produced but marked uncalibrated, and the return trigger refuses to act on them.
+
+`gps_bench` reports four counters rather than one, because "this frame produced no
+position" has causes with opposite remedies: **bad checksum** means corruption (baud,
+wiring, ground); **no fix** means an intact frame that carries no position, which during a
+cold start is every frame for minutes and is not a fault at all; **rejected** means a
+position that failed the satellite, HDOP or null-island criteria; **accepted** means a
+usable fix. Collapsing them into one number makes a normal cold start look like a wiring
+failure.
 
 ### Commanding the process
 `a`=ARM `n`=NAV `d`=DISARM `s`=STOP `q`=quit, over any of three paths:
