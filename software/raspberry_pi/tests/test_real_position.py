@@ -216,11 +216,39 @@ def test_position_or_none_nao_levanta():
     assert p.position_or_none() is None
 
 
-def test_stats_contam_rejeicoes():
-    p = RealPosition(FakePort([GGA_SEM_FIX, GGA_BOM]))
+def test_stats_separam_corrompido_de_sem_fix():
+    # Uma trama integra que nao da posicao NAO e o mesmo que uma trama
+    # corrompida: a primeira e o normal de um arranque a frio, a segunda
+    # aponta para baud errado. Contar as duas juntas faz um arranque
+    # normal parecer avaria.
+    partida = GGA_BOM.strip()[:-2] + "00\r\n"
+    p = RealPosition(FakePort([GGA_SEM_FIX, partida, GGA_BOM]))
     p.position()
-    vistas, rejeitadas = p.stats
-    assert vistas == 2 and rejeitadas == 1
+    st = p.stats
+    assert st.seen == 3
+    assert st.bad_checksum == 1        # so a partida
+    assert st.no_fix == 1              # a GGA sem fix, integra
+    assert st.accepted == 1            # a boa
+    assert st.rejected == 0
+
+
+def test_stats_contam_fix_recusado_por_criterio():
+    p = RealPosition(FakePort([GGA_POUCOS_SATS]), min_satellites=4)
+    try:
+        p.position()
+    except PositionUnavailable:
+        pass
+    st = p.stats
+    assert st.rejected == 1 and st.bad_checksum == 0 and st.no_fix == 0
+
+
+def test_arranque_a_frio_nao_conta_como_corrompido():
+    # O caso real da bancada de 15-09: onze tramas por segundo, todas
+    # integras, nenhuma com posicao. bad_checksum tem de ficar a zero.
+    p = RealPosition(FakePort([GGA_SEM_FIX, RMC_VOID] * 5))
+    p.poll()
+    st = p.stats
+    assert st.bad_checksum == 0 and st.no_fix == st.seen
 
 
 def test_max_lines_limita_o_poll():

@@ -1771,3 +1771,230 @@ precisamente o que faltou em agosto.
 #### Próximo passo
 - Contar os componentes antes de pegar no ferro.
 - Sessão de sensores pelo procedimento, e registo no próprio dia.
+
+### 2026-09-14 (sessão 2 — primeira ligação dos sensores: I2C posto a funcionar, BNO055 por resolver)
+
+Sessão de bancada pelo procedimento. Resultado honesto: **nenhum sensor foi
+validado**. Três horas de eliminação com o BNO055 a ser detetado de forma
+intermitente, que acabam com uma hipótese quantificada e por confirmar. O que
+ficou provado ficou provado com medições, e é isso que esta entrada regista.
+
+#### Trabalho realizado
+- **O I2C não estava sequer ligado.** O `i2cdetect` falhava com
+  `Could not open /dev/i2c-1` — o controlador não estava ativo e o kernel nem
+  criava o dispositivo. Resolvido com `raspi-config` (`dtparam=i2c_arm=on`).
+  Não era avaria: era configuração que nunca tinha sido feita, porque até hoje
+  nunca nada tinha sido ligado ao barramento.
+- **Barramento baixado para 10 kHz** (`dtparam=i2c_arm_baudrate=10000`), por
+  antecipação e não por sintoma: o BNO055 usa clock stretching e o controlador
+  I2C do Broadcom tem um defeito conhecido a lidar com isso, que produz
+  leituras corrompidas em vez de erro. **Confirmado ativo** lendo a device
+  tree: `/proc/device-tree/soc/i2c@7e804000/clock-frequency` = `00002710`.
+- **O repositório do Pi estava 40 dias atrasado** — o `tools/` nem existia lá.
+  Um `git pull` trouxe-o até ao estado de 4 de agosto. O trabalho de 13 e 14 de
+  setembro continua fora do GitHub, por commitar do lado do Windows.
+- Montagem de bancada: BNO055 e ESP32 ligados ao Pi, GPS deixado para depois.
+  Alimentação do Pi pelo header, a partir do DC-DC.
+
+#### O defeito, e o que ficou eliminado
+Sintoma: o BNO055 aparece no `i2cdetect` de forma intermitente, alternando
+entre `0x28` e `0x29` — os seus dois endereços possíveis — sem nunca ficar fixo.
+
+Eliminado **com medição**, por esta ordem:
+- **Alimentação à entrada do módulo** — 3,3 V estáveis entre VIN e GND.
+- **Continuidade do header aos pads do módulo** — boa nos três sinais.
+- **Linhas presas em baixo** — SDA e SCL em repouso a 3,3 V, ninguém as segura.
+- **Clock do barramento** — 10 kHz confirmados na device tree, não é o defeito
+  do clock stretching.
+- **Pino de endereço a flutuar** — a hipótese encaixava no sintoma (um pino de
+  endereço indefinido dá exatamente um endereço a saltar entre os dois
+  possíveis), mas prender o `ADD` a GND não mudou nada. Hipótese descartada
+  pelo próprio teste que a devia confirmar.
+- **O módulo ser o culpado** — o ADS1015 posto em paralelo no mesmo barramento
+  também não fica estável em `0x48`. Dois dispositivos de fabricantes
+  diferentes a falhar igual: o problema está no que partilham.
+
+#### Hipótese atual, quantificada e por confirmar
+Medição decisiva, já perto do fim: **o SDA em repouso está a 2,6 V**, e não aos
+3,3 V que o pull-up do Pi impõe.
+
+2,6 V é suspeitosamente igual a *alguma coisa mais 0,6 V*. Todo o chip tem
+díodos de proteção da entrada para a sua própria alimentação; um chip alimentado
+**abaixo** da tensão do barramento conduz por esse díodo e agarra a linha em
+VDD + 0,6 V. Logo:
+
+> SDA preso a 2,6 V ⟹ a alimentação interna do módulo anda pelos **2,0 V**,
+> quando o BNO055 exige **2,4 V** no mínimo.
+
+E 2,0 V internos com 3,3 V à entrada é o que se espera de uma placa cujo pino se
+chama `VIN` — o nome diz que há um regulador atrás dele, e estávamos a alimentar
+esse regulador com a tensão que ele devia produzir. É também a explicação de o
+ADS1015 ter falhado: o módulo subalimentado puxa o SDA de *todo* o barramento
+para baixo através desse díodo, e nenhum dispositivo consegue pôr a linha em
+alto como deve ser.
+
+A hipótese faz duas previsões verificáveis, que ficam para a próxima sessão:
+1. Desligando o BNO055 por completo, o SDA sobe para 3,3 V e o ADS1015 passa a
+   ficar fixo em `0x48`.
+2. Com o `VIN` a 5 V, o barramento normaliza — a confirmar **depois** de medir
+   SDA e SCL no módulo com ele isolado, para saber se os pull-ups da placa vão
+   ao VIN (nesse caso 5 V nas linhas, e não se liga ao Pi) ou ao rail regulado.
+
+#### Problemas / limitações
+- **Nenhum sensor leu coisa nenhuma.** O `heading_bench` chegou a arrancar e
+  falhou com `[ERRO] BNO055 nao responde no I2C: [Errno 5]`. Não há calibração,
+  não há declinação, não há offset de montagem, não há rumo.
+- **Um falso positivo por método errado.** Mediu-se continuidade entre o `ADD` e
+  o `SDA` **com o circuito alimentado** e o multímetro apitou. Quase mandou a
+  investigação atrás de uma ponte de solda que não existe — sem tensão, não
+  apita. Continuidade mede-se com o circuito morto, e este erro esteve a um
+  passo de custar uma dessoldagem inútil num módulo que está são.
+- **Se o sensor acabar em `0x29`, o código não tem por onde o saber.** O
+  `create_bno055()` do `real_heading.py` instancia `BNO055_I2C(i2c)` sem
+  endereço e não aceita um por parâmetro.
+- O procedimento previa calibrar o BNO055 com tudo montado na posição
+  definitiva; nada disso aconteceu.
+
+#### Resultado do dia
+- O barramento I2C existe, está configurado e está documentado — antes de hoje
+  não existia de todo no Pi.
+- O defeito do BNO055 está cercado: cinco causas eliminadas com medição, uma
+  hipótese quantificada, e duas previsões que a confirmam ou a matam em dez
+  minutos.
+
+#### Lições aprendidas
+- **Continuidade e tensão DC passam por juntas más.** O multímetro em tensão
+  puxa microamperes através de 10 MΩ; uma junta com centenas de ohms mostra
+  3,3 V impecáveis e falha assim que o circuito precisa de miliamperes. Estivemos
+  três horas a olhar para medições corretas num circuito avariado, e isso não é
+  azar — é uma propriedade do instrumento que convinha ter presente desde o
+  início.
+- **O multímetro integra ao longo de centenas de milissegundos; o I2C vive em
+  microssegundos.** A 10 kHz um bit dura 100 µs. Há classes inteiras de defeito
+  que este instrumento não consegue ver, por construção.
+- **A ponta de prova conserta o que está a medir.** Encostar o multímetro a um
+  pino aplica força e fecha contactos marginais. Num defeito intermitente, o ato
+  de medir tende a fazê-lo desaparecer.
+- **Um segundo dispositivo conhecido no barramento foi o teste com mais
+  informação por unidade de esforço.** Quatro jumpers do ADS1015 ilibaram o
+  módulo de uma vez — e, se a hipótese se confirmar, mostraram mais do que isso:
+  que um módulo subalimentado envenena o barramento para todos os outros.
+- **O nome de um pino é informação.** `VIN` quer dizer que há um regulador
+  atrás; uma placa de 3,3 V puros teria o pino marcado `VCC` ou `3V3`. A
+  primeira suspeita da noite acabou por ser a hipótese final, e passou três
+  horas por testar porque parecia demasiado simples.
+- **Um sintoma pode ter mais do que uma causa com a mesma assinatura.** O
+  endereço a saltar entre os dois valores possíveis é o retrato de um pino de
+  endereço a flutuar — e não era isso. Encaixar não é provar.
+
+#### Próximo passo
+- As duas previsões da hipótese: desligar o BNO055 e ver o SDA subir a 3,3 V com
+  o ADS estável; depois `VIN` a 5 V, com a verificação dos pull-ups antes de
+  voltar a ligar as linhas ao Pi.
+- Só depois disso, calibração do BNO055, declinação e offset de montagem.
+- Commit e push do que está no Windows — 13 e 14 de setembro ainda não saíram de
+  lá, e o Pi só recebe pelo GitHub.
+
+### 2026-09-15 (defeito fechado: o módulo BNO055 está avariado)
+
+As duas previsões de ontem foram testadas. A primeira confirmou-se, a segunda
+não — e é isso que fecha o caso, embora não no sentido em que se esperava.
+
+#### Trabalho realizado
+- **Previsão 1, confirmada.** Com o BNO055 desligado por completo do barramento,
+  o SDA sobe aos 3,3 V e o ADS1015 fica **fixo em `0x48`**, sem uma única falha.
+  O barramento, o Pi, a cablagem e a configuração de I2C ficam provados bons.
+- **Previsão 2, falhada.** Alimentado o módulo com 4,7 V (tirados do `VIN` do
+  ESP32, medidos antes de ligar), o barramento **não** normalizou:
+  - módulo isolado do header → SDA a **2,7 V**, que é o rail interno da placa;
+  - módulo ligado ao Pi → SDA a **2,6 V**, na mesma que antes.
+- **Confirmação final:** o `VIN` medido no pino do próprio módulo dá os 4,7 V.
+  A tensão chega lá; o rail interno é que não sobe.
+
+#### Conclusão
+**O módulo está avariado.** Três sinais independentes, todos a apontar ao mesmo
+sítio:
+
+1. Rail interno a 2,7 V com 4,7 V à entrada. Um regulador de 3,3 V com 1,4 V de
+   margem não entrega 2,7 V — ou está a ser puxado por consumo excessivo no
+   próprio módulo, ou está danificado.
+2. O SDA em 2,6 V com o pull-up do Pi a injetar 0,39 mA, ou seja, a linha fica
+   **abaixo das duas tensões que a puxam** (3,3 V do Pi e 2,7 V da placa). Só é
+   possível se algo estiver a drenar ~0,4 mA num pino que devia estar em alta
+   impedância: cerca de 6,5 kΩ de fuga para a massa.
+3. O ADS1015, na mesma cablagem, no mesmo Pi, com a mesma configuração, é
+   perfeitamente estável.
+
+**A hipótese da subalimentação estava errada.** O rail baixo era sintoma da
+avaria, não a sua causa — dar-lhe tensão a mais não o levantou.
+
+#### Decisões técnicas
+- **Substituir por placa de origem conhecida**, não por outro clone genérico. A
+  documentação da Bosch sobre o BNO055 avisa explicitamente para o risco de
+  falsificações nos chips mais sensíveis.
+- **Manter o BNO055** como sensor, e não mudar de família: o `real_heading.py`,
+  os seus 13 testes e a política de calibração estão escritos para ele.
+- **Fica em aberto qual a placa**, entre a da Devantech (Botnroll, 28,50 €, com
+  regulação e tradução de níveis para 3,3–5 V) e a breakout da Adafruit
+  (PTRobotics). Ver a nota de integração abaixo — não são equivalentes ao ligar.
+- **Sem sobresselente, por agora.** O BNO055 é o único sensor de rumo e não tem
+  redundância, mas o kill-switch remoto continua adiado por orçamento e é
+  obrigatório antes de qualquer ensaio sem corda. Um segundo IMU antes do rádio
+  inverteria a ordem de prioridades que o próprio projeto fixou.
+- **A placa avariada fica marcada como tal**, com fita e caneta. Uma placa
+  suspeita numa gaveta é a que volta ao barco por engano daqui a três meses,
+  quando já ninguém se lembra porquê.
+
+#### Nota de integração — a placa da Devantech vem em UART, não em I2C
+O BNO055 fala I2C **e** UART, e usa os mesmos pinos físicos para os dois; o modo
+é escolhido por um pino de configuração. É por isso que a HW-921 tem os pinos
+marcados `SCL\RX` e `SDA\TX`.
+
+A placa da Devantech **vem configurada de fábrica em série (115 200 8N1)**, e é
+por isso que a documentação dela fala em TX e RX e não em SDA e SCL. Para a pôr
+em I2C **é preciso fechar um link na própria placa**. Depois disso responde em
+**0x28**, que é exatamente o endereço por omissão do `create_bno055()`, portanto
+não obriga a tocar no código.
+
+Se este passo for esquecido, a placa não aparece no `i2cdetect` e o sintoma é
+indistinguível de uma placa morta — que é precisamente a armadilha que acabou de
+custar uma noite.
+
+A breakout da Adafruit vem em I2C de origem e não tem link nenhum para fechar.
+Mais cara, sem manobras.
+
+#### Válido para qualquer das placas
+O `dtparam=i2c_arm_baudrate=10000` **mantém-se**. O defeito de clock stretching
+é do controlador de I2C do Broadcom, não do sensor, e não desaparece por se pôr
+melhor hardware do outro lado do barramento.
+
+#### Problemas / limitações
+- Continua sem haver uma única leitura de rumo. Calibração, declinação e offset
+  de montagem estão todos por fazer, e dependem da placa nova.
+- Sem rumo real, o modo NAV continua restrito a simulação. O critério não é o
+  sensor aparecer no barramento: é dar rumo estável durante um período contínuo.
+
+#### Lições aprendidas
+- **Duas hipóteses seguidas encaixaram no sintoma e estavam erradas.** O pino de
+  endereço a flutuar explicava o `0x28`/`0x29` a saltar; prendê-lo não mudou
+  nada. A subalimentação explicava o SDA a 2,6 V; alimentar bem não mudou nada.
+  Encaixar não é provar, e a diferença entre as duas coisas custou horas.
+  Regra que fica: **cada hipótese leva uma previsão que a pode matar, e a
+  previsão testa-se antes de se agir sobre a hipótese.**
+- **A compra foi travada até ao diagnóstico estar fechado.** Medir o `VIN` no
+  pino do módulo custou dois minutos e evitou encomendar sobre uma conclusão
+  meio feita — que é a forma mais cara de estar enganado.
+- **Um módulo avariado não falha sozinho: envenena o barramento inteiro.** O
+  ADS1015 era inocente e parecia culpado, só por estar ligado ao mesmo SDA. Num
+  barramento partilhado, o sintoma aparece em todos os dispositivos e o defeito
+  está num.
+- **O preço do clone não foi o preço do clone.** Uma placa morta não condena a
+  população toda, mas o custo do mau exemplar foi uma noite inteira e a dúvida a
+  contaminar todas as outras medições enquanto não se soube.
+
+#### Próximo passo
+- Encomendar a placa. Se for a da Devantech, **fechar o link de I2C antes de a
+  ligar**.
+- Em paralelo, e sem depender do IMU: GPS na UART do GPIO (secção E do
+  procedimento), montagem dos três divisores 10k/2k e os canais de tensão do
+  ADS1015, `git pull` no Pi, e o nome `by-id` da porta do ESP32.

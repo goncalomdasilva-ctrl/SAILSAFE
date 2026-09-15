@@ -62,6 +62,13 @@ class FakePort:
             f"{sats:02d},{hdop:.1f},20.0,M,,M,,")
 
 
+def contadores(st):
+    """Uma linha com os quatro contadores, cada um com significado proprio."""
+    return (f"tramas {st.seen}  checksum mau {st.bad_checksum}  "
+            f"sem fix {st.no_fix}  recusadas {st.rejected}  "
+            f"aceites {st.accepted}")
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="Ensaio de bancada do GPS")
     p.add_argument("--fake", action="store_true", help="sem hardware")
@@ -109,7 +116,7 @@ def main(argv=None):
                 posicao, motivo = gps.position(), ""
             except PositionUnavailable as e:
                 posicao, motivo = None, str(e)
-            vistas, rejeitadas = gps.stats
+            st = gps.stats
             decorrido = time.monotonic() - t0
             fix = gps.last_fix
 
@@ -123,17 +130,20 @@ def main(argv=None):
                 if fix is not None and fix.satellites is not None:
                     detalhe = f"  {fix.satellites} sat  HDOP {fix.hdop:.1f}"
                 print(f"  {decorrido:6.0f}s  {lat:11.6f} {lon:12.6f}{detalhe}"
-                      f"   tramas {vistas} ({rejeitadas} rejeitadas)")
+                      f"   {contadores(st)}")
             else:
                 print(f"  {decorrido:6.0f}s  sem posicao: {motivo}"
-                      f"   tramas {vistas} ({rejeitadas} rejeitadas)")
+                      f"   {contadores(st)}")
 
-            if vistas == 0 and decorrido > 5:
+            # O aviso so dispara com tramas CORROMPIDAS. Tramas integras
+            # que nao dao posicao sao o normal de um arranque a frio, e
+            # avisar sobre elas seria ensinar a ignorar o aviso.
+            if st.seen == 0 and decorrido > 5:
                 print("       Nada chega a porta. Verificar TX/RX cruzados, "
                       "massa comum e o baud.")
-            elif vistas > 20 and rejeitadas == vistas and decorrido > 5:
-                print("       Chegam bytes mas nenhuma trama passa. "
-                      "Quase sempre e o baud errado.")
+            elif st.seen > 20 and st.bad_checksum > st.seen * 0.5:
+                print("       Mais de metade das tramas vem corrompida. "
+                      "Quase sempre e o baud errado ou massa em falta.")
 
             time.sleep(args.intervalo)
     except KeyboardInterrupt:

@@ -38,6 +38,23 @@ from collections import namedtuple
 # Uma posicao ja validada. utc e a hora da trama, tal como veio.
 Fix = namedtuple("Fix", "lat lon quality satellites hdop utc source")
 
+# Contadores de diagnostico. Sao QUATRO e nao um, porque "a trama nao deu
+# posicao" tem causas com remedios opostos:
+#
+#   bad_checksum  a linha chegou corrompida -> baud errado, cablagem, massa
+#   no_fix        a linha esta boa mas nao traz posicao: ou nao e do tipo
+#                 que interessa (GSV, GSA, VTG), ou o modulo ainda nao tem
+#                 fix. NAO e defeito nenhum; num arranque a frio sao 100%
+#                 das tramas durante minutos
+#   rejected      havia posicao, mas nao passou nos criterios (satelites,
+#                 HDOP, 0/0)
+#   accepted      produziu um fix utilizavel
+#
+# Somar tudo num contador de "rejeitadas" faz um arranque normal parecer
+# uma avaria de baud -- e um alarme que dispara quando nao se passa nada
+# ensina o operador a ignora-lo.
+Stats = namedtuple("Stats", "seen bad_checksum no_fix rejected accepted")
+
 FIX_INVALIDO = 0
 
 
@@ -175,7 +192,10 @@ class RealPosition:
         self._last_fix_t = None
         self._last_reject = "ainda sem leituras"
         self._lines_seen = 0
-        self._lines_rejected = 0
+        self._bad_checksum = 0
+        self._no_fix = 0
+        self._rejected = 0
+        self._accepted = 0
 
     # -- aceitacao -------------------------------------------------------
 
@@ -216,15 +236,25 @@ class RealPosition:
                 break
             lidas += 1
             self._lines_seen += 1
+
+            if not nmea_checksum_ok(linha):
+                self._bad_checksum += 1
+                continue
+
             fix = parse_sentence(linha)
             if fix is None:
-                self._lines_rejected += 1
+                # Trama integra que nao da posicao: tipo que nao interessa,
+                # ou modulo ainda sem fix. Normal, nao e defeito.
+                self._no_fix += 1
                 continue
+
             ok, motivo = self._acceptable(fix)
             if not ok:
-                self._lines_rejected += 1
+                self._rejected += 1
                 self._last_reject = motivo
                 continue
+
+            self._accepted += 1
             self._last_fix = fix
             self._last_fix_t = self._clock()
         return lidas
@@ -264,9 +294,14 @@ class RealPosition:
 
     @property
     def stats(self):
-        """(tramas vistas, tramas rejeitadas). Uma taxa de rejeicao alta
-        com fix estavel costuma ser baud errado ou massa em falta."""
-        return self._lines_seen, self._lines_rejected
+        """Stats(seen, bad_checksum, no_fix, rejected, accepted).
+
+        O contador que aponta para avaria de ligacao e o bad_checksum: sao
+        linhas que chegaram corrompidas. O no_fix alto e esperado e nao
+        significa nada de mau -- num arranque a frio e 100% das tramas.
+        """
+        return Stats(self._lines_seen, self._bad_checksum, self._no_fix,
+                     self._rejected, self._accepted)
 
 
 class RealBoat:
