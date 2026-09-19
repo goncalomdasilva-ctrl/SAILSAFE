@@ -11,6 +11,13 @@ SAILSAFE is a personal engineering project focused on building an autonomous sur
 > development record, with dated entries from the start, is in
 > [`Engineering_log.md`](Engineering_log.md).
 
+> **On authorship.** The system design, the safety decisions, the hardware and the bench
+> work are mine. The code is written with AI assistance and held to the same standard as
+> everything else here: a regression suite that runs without hardware, and figures that
+> come from measurements on the bench rather than from datasheets. The engineering log
+> records the decisions and their reasoning — including the times a generated tool was
+> wrong and the bench proved it.
+
 ## Current Phase
 Phase 1 — software MVP validated in simulation; mechanical build in preparation (architecture v6.1).
 
@@ -27,6 +34,12 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
   wander measured at ~30 cm over 10 s; slow drift over 10 min reached a 31 m × 4 m
   box at a window sill, with half the sky blocked — a pessimistic bound, to be
   re-measured on open water before the waypoint arrival radius is fixed
+- **GPS integrated into the main process** (17 Sep, `--gps`): position read and
+  logged in every state, not just NAV, so an ordinary bench session produces the
+  dispersion data a separate script used to be needed for. Losing position in NAV
+  leads to a safe state after a short tolerance; the return point is recorded at
+  ARM. Rehearsed end to end against fake serial hardware (`tools/system_bench.py`),
+  never yet against the real receiver
 - **Heading blocked**: the BNO055 module is faulty (internal rail at 2.7 V with 4.7 V
   in, and ~0.4 mA of leakage on SDA, which poisoned the whole I2C bus). Replacement
   ordered; see `Engineering_log.md` for the diagnosis
@@ -36,9 +49,15 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
 - Mechanical architecture v6.1: batteries housed inside the hulls, IP66 electronics box at deck level
 - Motors and ESCs pending (blocked on physical kill-switch chain — safety rule)
 - GPS wiring closed (OPEN-005): NMEA on the Pi's GPIO UART, `/dev/serial0` at 9600
-- Return point defined (closes OPEN-006 on the point): the position recorded once at ARM,
-  averaged over validated fixes and never rewritten; straight-line return, which is only
-  admissible on open water within sight of the operator
+- Return point implemented (closes OPEN-006 on the point): the position is recorded
+  once at ARM, averaged over validated fixes in a sliding window, and never rewritten.
+  With `--gps`, ARM is refused without it. Straight-line return, which is only
+  admissible on open water within sight of the operator. Recorded but not yet
+  consumed — there is no return mode yet
+- **Arrival radius is in debt to the GPS rate.** At 1 Hz, a position may legitimately
+  be 2.5 s old; at the 3 m/s design speed that is 7.5 m of uncertainty, against a 4 m
+  arrival radius. No staleness budget fixes this — raising the module to 5 Hz
+  (`UBX-CFG-RATE`) is the condition for tightening the radius
 
 ## Safety Design
 - Boot always in a safe (DISARMED) state; STOP has absolute priority
@@ -60,6 +79,15 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
   thrust, and when it goes, radio, logging and control go together. The guard latches —
   a battery that recovers voltage once the load drops does not un-abort a mission — and
   refuses to decide at all on uncalibrated readings
+- Losing position stops the boat, it does not send it home by dead reckoning. Retracing
+  the outbound path blind was considered and declined: with no speed sensor and a
+  magnetometer sitting next to the motors, the estimate would be steered by the least
+  trustworthy sensor in the system with nothing left to check it against — and GPS error
+  is bounded where dead-reckoning error is not. The decisive argument was that the
+  condition making a blind return safe (a working radio link) is the same one that makes
+  it unnecessary, since the operator can then simply drive the boat back. Dead reckoning
+  is still worth running as an *observer*, so its error can be measured against GPS and
+  reported; that is OPEN-014, and it never steers. Reasoning in `Engineering_log.md`
 - Manual power cut (XT90 loop key) required before any ESC/motor energisation; remote kill switch (2.4 GHz RC / LoRa) planned before autonomous operation
 
 ## Main Components
@@ -124,6 +152,7 @@ python3 software/raspberry_pi/tests/test_commands.py
 python3 software/raspberry_pi/tests/test_sense.py
 python3 software/raspberry_pi/tests/test_battery_guard.py
 python3 software/raspberry_pi/tests/test_real_position.py
+python3 software/raspberry_pi/tests/test_return_point.py
 
 # ESP32 safety logic (runs on a PC, no board needed)
 g++ -std=c++11 -Wall -o /tmp/tms software/esp32/tests/test_motor_safety.cpp && /tmp/tms
@@ -139,7 +168,20 @@ python3 software/raspberry_pi/main.py --sim         # NAV in simulation, no prop
 python3 software/raspberry_pi/main.py --sim-motores # NAV in simulation, motors DO run
 ```
 
-153 Python tests and 182 C++ checks, none of which need hardware.
+186 Python tests and 182 C++ checks, none of which need hardware.
+
+There is also an end-to-end rehearsal of the whole process against fake serial
+hardware — two pseudo-terminals, one feeding NMEA as the NEO-8M, the other
+answering STOP as the ESP32:
+
+```bash
+cd software/raspberry_pi
+python3 -m tools.system_bench
+```
+
+It walks ARM-too-early → ARM → NAV → GPS going silent, and checks that each step
+does the safe thing. Unit tests cover the pieces; this one covers the seams
+between them, which is where the last three defects were.
 
 ### Bench tools
 Each one exercises exactly one sensor and sends nothing to the ESP32.
@@ -156,6 +198,17 @@ python3 -m tools.gps_bench --cru          # shows every frame, and whether it pa
 Drop `--fake` for the real sensor. `sense_bench --calibrar a2 12.60` stores the scale
 factor for one channel against a multimeter reading; without that file the readings are
 produced but marked uncalibrated, and the return trigger refuses to act on them.
+
+```bash
+# main process with the real GPS (position real, heading still synthetic)
+python3 main.py --gps --sim
+```
+
+With `--gps` the position comes from the NEO-8M and is logged in every state. If the
+port does not open the process **exits** rather than quietly falling back to the
+synthetic boat — running a different system than the one that was asked for is the
+failure nobody notices. Heading is still synthetic, so `nav_guard` keeps refusing
+propulsion: `--gps --sim` is an observation mode, not a mission.
 
 `gps_bench` reports four counters rather than one, because "this frame produced no
 position" has causes with opposite remedies: **bad checksum** means corruption (baud,
@@ -175,6 +228,10 @@ echo s > /tmp/sailsafe.ctl
 # 3. signal — STOP only, and the one path that cannot be missing
 kill -USR1 <pid>
 ```
+
+Serial ports can be named explicitly: `--esp32-port /dev/serial/by-id/...` and
+`--gps-port`. A stable `by-id` name is worth the typing — two USB devices swap
+`/dev/ttyUSB*` numbers between boots, and nothing warns you.
 
 The process prints its PID and the paths actually available at startup. Without a tty and
 without a FIFO only STOP remains, so the boat cannot be armed — inert, which is the safe

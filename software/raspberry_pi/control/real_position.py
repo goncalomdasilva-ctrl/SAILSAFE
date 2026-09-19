@@ -158,6 +158,24 @@ def parse_sentence(line):
     return None
 
 
+# Idade maxima de um fix antes de deixar de servir.
+#
+# O NEO-8M emite a 1 Hz, portanto os fixes chegam de segundo a segundo. Os
+# 2,0 s que aqui estavam nao toleravam UMA mensagem perdida: com uma falha,
+# o fix seguinte chega exatamente ao limite e a posicao fica indisponivel
+# num arranque perfeitamente normal. 2,5 s toleram uma perda com 0,5 s de
+# folga para o jitter da porta.
+#
+# O que este numero custa, e que fica registado em vez de escondido: a 3 m/s
+# (velocidade de projeto), 2,5 s de posicao velha sao 7,5 m de incerteza --
+# quase o dobro do raio de chegada de 4 m. Ou seja, com o modulo a 1 Hz o
+# raio de chegada NAO pode ser apertado abaixo do orcamento de idade, por
+# muito bom que seja o fix. Nao ha valor de max_stale_s que resolva isto: o
+# remedio e subir a cadencia do modulo (o NEO-8M faz 5 Hz por UBX-CFG-RATE),
+# e essa passa a ser a condicao para apertar o raio de chegada.
+MAX_STALE_S = 2.5
+
+
 class RealPosition:
     """Posicao do barco medida pelo GPS.
 
@@ -165,7 +183,9 @@ class RealPosition:
       port            objeto com readline() -> bytes/str e, se existir,
                       in_waiting (serial.Serial, ou um falso nos testes)
       max_stale_s     idade maxima da ultima posicao boa antes de deixar
-                      de ser aceite
+                      de ser aceite. Ver MAX_STALE_S para o porque do
+                      valor -- nao e um numero redondo, sai da cadencia
+                      do modulo
       min_satellites  minimo de satelites exigido nas tramas GGA
       max_hdop        HDOP maximo aceite. 2,5 e ja generoso para agua
                       aberta; acima disso a posicao anda aos saltos
@@ -179,7 +199,7 @@ class RealPosition:
     # quando todas as fontes tem SYNTHETIC False.
     SYNTHETIC = False
 
-    def __init__(self, port, max_stale_s=2.0, min_satellites=4,
+    def __init__(self, port, max_stale_s=MAX_STALE_S, min_satellites=4,
                  max_hdop=2.5, max_lines=40, clock=time.monotonic):
         self.port = port
         self.max_stale_s = max_stale_s
@@ -287,6 +307,19 @@ class RealPosition:
                 f"ultimo fix ha {idade:.1f} s (maximo {self.max_stale_s:.1f} s)")
         return self._last_fix.lat, self._last_fix.lon
 
+    def fix_age(self):
+        """Idade do ultimo fix aceite, em segundos, ou None se nunca houve.
+
+        Nao faz poll nem levanta nada. Existe para quem quer MOSTRAR ou
+        REGISTAR a idade sem a transformar numa decisao -- o position()
+        e que decide, e e o unico que deve decidir. Um segundo sitio a
+        comparar idades com limiares seria uma segunda politica a
+        divergir da primeira.
+        """
+        if self._last_fix_t is None:
+            return None
+        return self._clock() - self._last_fix_t
+
     def position_or_none(self):
         """Como position(), mas devolve None em vez de levantar.
 
@@ -297,6 +330,16 @@ class RealPosition:
             return self.position()
         except PositionUnavailable:
             return None
+
+    @property
+    def last_reject(self):
+        """Porque e que a ultima trama util nao passou. Texto, para mostrar.
+
+        Nao e uma decisao: e o motivo da ultima recusa, que serve para o
+        operador saber se esta perante um arranque a frio, um HDOP mau ou
+        uma cablagem errada -- causas com remedios opostos.
+        """
+        return self._last_reject
 
     @property
     def last_fix(self):
@@ -323,13 +366,12 @@ class RealBoat:
     fecha-se na agua: update() nao tem nada para fazer e e, de proposito,
     um no-op que devolve o estado medido.
 
-    NAO ESTA INTEGRADO NEM ENSAIADO. Falta o main.py apanhar
-    PositionUnavailable e HeadingUnavailable a volta do nav_step() e ir
-    para estado seguro, como ja faz quando perde a serie. Enquanto isso
-    nao existir, esta classe serve a bancada e nao a agua.
+    INTEGRADO, NAO ENSAIADO EM AGUA. O main.py ja apanha
+    PositionUnavailable a volta do nav_step() e vai para estado seguro,
+    como ja fazia quando perdia a serie (ver PositionWatch). Falta o
+    ensaio real, e falta o rumo: sem BNO055 esta classe so se usa com
+    fonte de rumo sintetica, e nesse caso declara-se sintetica.
     """
-
-    SYNTHETIC = False
 
     def __init__(self, position_source, heading_source):
         self.position_source = position_source
@@ -345,6 +387,25 @@ class RealBoat:
     def update(self, left, right, dt=1.0):
         # A malha fecha-se na agua. Nao ha modelo nenhum a atualizar aqui.
         return self.position() + (self.heading,)
+
+    # SYNTHETIC e calculado, nao fixo, e a diferenca nao e cosmetica.
+    #
+    # Estava aqui um `SYNTHETIC = False` de classe, escrito quando se
+    # assumia que um RealBoat so se construia com dois sensores reais.
+    # Com o BNO055 avariado, a primeira coisa que se quer fazer e
+    # exatamente o contrario: GPS real com rumo sintetico, para o GPS
+    # entrar no sistema sem esperar pela placa nova. Nessa combinacao o
+    # False de classe mentia -- o nav_guard() via uma fonte "real" e
+    # deixava comandar motores a partir de um rumo inventado, que e o
+    # caso perigoso que o proprio nav_guard existe para impedir.
+    #
+    # A regra passa a ser a mesma que o nav_guard ja aplica ao conjunto:
+    # basta uma fonte sintetica para o todo o ser. E, tal como no
+    # is_synthetic(), uma fonte que nao se declara conta como sintetica.
+    @property
+    def SYNTHETIC(self):        # noqa: N802 - contrato partilhado com as fontes
+        return (getattr(self.position_source, "SYNTHETIC", True)
+                or getattr(self.heading_source, "SYNTHETIC", True))
 
 
 def create_neo8m(device="/dev/serial0", baudrate=9600, timeout=0.2, **kwargs):

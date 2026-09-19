@@ -2111,3 +2111,276 @@ regresso.
   provado estável no barramento.
 - Quando a placa do BNO055 chegar: se for a da Devantech, **fechar o link de I2C
   antes de a ligar**.
+
+### 2026-09-17 (o GPS entra no sistema, e três defeitos na costura)
+
+O GPS estava validado desde o dia 15, mas só existia dentro do
+`gps_bench`. Hoje passou a ser um sensor do processo: o `main.py` lê-o em
+todos os estados, grava o ponto de regresso a partir dele e sabe o que
+fazer quando ele se cala. O rumo continua parado à espera da placa.
+
+#### Trabalho realizado
+- **`--gps` no `main.py`.** Constrói o `RealPosition` na porta do NEO-8M
+  e, se a porta não abrir, **sai com código 2 em vez de continuar**.
+  Continuar seria correr um sistema diferente daquele que foi pedido,
+  com o barco sintético a fazer de posição e ninguém a dar por isso.
+- **Posição registada em todos os estados, não só em NAV.** Cada sessão
+  de bancada passa a deixar lat, lon, satélites, HDOP, idade do fix e
+  origem da trama no CSV, a 1 Hz. A dispersão do dia 15 precisou de um
+  script à parte; a próxima sai do registo normal.
+- **Política de perda de posição (`PositionWatch`).** Fecha o buraco que
+  o docstring do `RealBoat` assinalava desde que foi escrito. Três ciclos
+  seguidos sem posição e a missão aborta: STOP confirmado e DISARMED.
+  Durante a tolerância a propulsão vai a **zero** e o heartbeat continua
+  — o barco fica parado e comandável, em vez de parado pelo failsafe ou a
+  andar sem saber para onde. **Latching**, como a trava do ESP32 e a
+  guarda de bateria: o GPS a voltar a si não recomeça a missão.
+- **Ponto de regresso (`control/return_point.py`).** Média de fixes
+  validados numa janela deslizante, gravado no ARM, nunca reescrito. Sem
+  ele, com `--gps`, o ARM é recusado. Fecha em código o que o README já
+  anunciava como decidido.
+- **Missão derivada de uma origem.** Os waypoints deixaram de ser
+  coordenadas escritas à mão e passam a ser deslocamentos em metros a
+  partir de um ponto. Com GPS, esse ponto é o de regresso. Waypoints
+  absolutos só faziam sentido enquanto a origem também era inventada.
+- **`--esp32-port`.** Fecha o item que estava em aberto desde o dia 15: a
+  porta do ESP32 pode agora ser um nome estável de `/dev/serial/by-id/`
+  em vez de um `/dev/ttyUSB*` que troca de número entre arranques.
+- **`tools/system_bench.py`**, novo. Ensaia o processo **inteiro** contra
+  dois pseudo-terminais: um debita NMEA e faz de NEO-8M, o outro responde
+  ao STOP e faz de ESP32. Percorre ARM cedo demais → ARM a sério → NAV →
+  GPS a calar-se, e verifica dez coisas. Sem hardware nenhum.
+- **186 testes em Python** (eram 153), 182 verificações em C++, e as dez
+  verificações de ponta a ponta.
+
+#### O defeito que valeu o dia
+O `RealBoat` tinha `SYNTHETIC = False` **fixo na classe**. Foi escrito
+quando se assumia que um `RealBoat` só se construía com dois sensores
+reais — e hoje a primeira coisa que se quis fazer foi exatamente o
+contrário: GPS real com rumo sintético, para o GPS entrar no sistema sem
+esperar pela placa nova.
+
+Nessa combinação o `False` mentia. O `nav_guard()` via uma fonte "real",
+concluía que não havia nada de sintético no conjunto e devolvia
+`NAV_COM_MOTORES` — **motores reais autorizados a seguir um rumo
+inventado**, que é precisamente o caso que o `nav_guard` existe para
+impedir. A guarda estava certa; a fonte é que lhe mentia na resposta.
+
+Passou a ser calculado: `SYNTHETIC` é verdadeiro se **qualquer** das
+fontes o for, e uma fonte que não se declara conta como sintética — a
+mesma regra que o `nav_guard` já aplicava ao conjunto, agora também
+dentro de cada fonte composta.
+
+#### Três defeitos na costura, todos apanhados pelo ensaio
+Nenhum dos três aparece em testes unitários, porque nenhum deles vive
+dentro de uma peça. Vivem entre peças.
+
+1. **Tramas RMC não trazem satélites nem HDOP.** O registo formatava-os
+   com `:.2f` e rebentava com `TypeError` assim que o último fix aceite
+   viesse de um RMC. Os testes unitários do `RealPosition` cobrem RMC; o
+   código que *escreve* o RMC no log é que era novo. Passou a distinguir
+   "não medido" de zero, e a escrever `n/d`.
+2. **O ponto de regresso ficava gravado por um ARM recusado.** A
+   verificação tinha de vir antes de se destravar a propulsão — condição
+   mais barata falha primeiro —, mas eu estava a **gravar** aí. Um ARM
+   recusado por falta de série deixava o ponto fixado num sítio onde o
+   barco nunca chegou a estar armado, e como o ponto não se reescreve,
+   ficava assim para a sessão inteira. Separou-se `check()` de
+   `record()`: pergunta-se antes da trava, grava-se depois de ela
+   confirmar.
+3. **A mensagem de erro presa no arranque a frio.** Com o GPS calado, o
+   ecrã dizia `sem posição: ainda sem leituras` — o motivo da última
+   recusa *por critério*, que nunca foi atualizado porque nada tinha sido
+   recusado. Silêncio e recusa são defeitos com remédios opostos. O
+   `motivo_sem_fix()` passa a olhar para a idade do fix e a dizer "módulo
+   calado".
+
+#### Decisões técnicas
+- **`max_stale_s` de 2,0 para 2,5 s.** A 1 Hz, os 2,0 s não toleravam uma
+  única mensagem perdida: com uma falha, o fix seguinte chega
+  *exatamente* ao limite. 2,5 s toleram uma perda com 0,5 s de folga.
+- **E o que esse número custa, escrito em vez de escondido:** a 3 m/s,
+  2,5 s de posição velha são **7,5 m de incerteza — quase o dobro do raio
+  de chegada de 4 m**. Não há valor de `max_stale_s` que resolva isto. Com
+  o módulo a 1 Hz, o raio de chegada **não pode ser apertado abaixo do
+  orçamento de idade**, por muito bom que seja o fix. O remédio é subir a
+  cadência do módulo (o NEO-8M faz 5 Hz por `UBX-CFG-RATE`), e isso passa
+  a ser **condição para apertar o raio de chegada**.
+- **Tolerância de três ciclos, não um.** Abortar à primeira falha seria um
+  alarme a disparar quando não se passa nada — a mesma lição dos
+  contadores do `gps_bench`, e um alarme desses ensina-se a ignorar.
+  Orçamento total de silêncio: 2,5 + 3 × 0,2 = **3,1 s**, e a tolerância
+  (0,6 s) cabe folgadamente debaixo do failsafe de ~1 s do ESP32, portanto
+  as duas camadas encadeiam-se em vez de competirem. Há um teste só para
+  proteger essa ordem.
+- **Dispersão máxima do ponto de regresso: 5 m, provisória.** Sai da
+  dispersão de curto prazo medida ao parapeito (~30 cm em 10 s), que é o
+  melhor número que há hoje. Fica a refazer em água aberta, tal como o
+  raio de chegada.
+- **O ARM exige ponto de regresso, o NAV exige-o gravado.** É a mesma
+  regra que já vale para a trava: não se anuncia ARMED sem saber se a
+  propulsão está destravada, e não se arma sem saber para onde é que o
+  barco volta. Sem `--gps` a condição não existe — na bancada, sem posição
+  nenhuma, exigi-la só impediria trabalho.
+
+#### Problemas / limitações
+- **O rumo continua sem existir.** Com `--gps` e rumo sintético, o
+  `nav_guard` devolve `NAV_RECUSADO` sem `--sim` — correto, e é isso que
+  limita o NAV a observação até a placa chegar.
+- **Com o receptor parado, a missão nunca conclui.** A posição real não se
+  mexe, a distância ao waypoint fica nos 40 m para sempre. É o
+  comportamento certo para um receptor parado, mas quer dizer que
+  `--gps --sim` é um modo de observação e não uma simulação de missão.
+- **`bearing_deg` devolve 360,0 em vez de 0,0** quando o ângulo dá um
+  negativo minúsculo (`-1e-14 + 360`, e o módulo não o apanha). Cosmético,
+  anterior a hoje, apareceu no ensaio com o barco sintético. Fica
+  anotado.
+- **Nada disto foi ensaiado com o GPS verdadeiro.** O `system_bench` prova
+  a lógica da costura, não a cablagem. O próximo passo no Pi é correr
+  `main.py --gps --sim` com o NEO-8M mesmo ligado.
+- O ponto de regresso é gravado, e **ainda não é usado para nada**: não há
+  modo de regresso. Gravá-lo primeiro é deliberado — a guarda de bateria
+  e a perda de rumo vão precisar dele, e o ponto tem de existir antes de
+  haver quem o consuma.
+
+#### Lições aprendidas
+- **Um valor por omissão escrito numa classe é uma suposição sobre como
+  ela vai ser usada.** O `SYNTHETIC = False` do `RealBoat` estava certo
+  para o mundo em que foi escrito, e ficou errado no dia em que o BNO055
+  avariou e a configuração possível passou a ser meia real. A suposição
+  não estava escrita em lado nenhum; estava embutida num literal.
+- **Os testes unitários cobrem as peças; os defeitos de hoje estavam
+  todos entre elas.** RMC sem HDOP, ponto gravado por um ARM recusado,
+  mensagem presa no arranque a frio — três defeitos, nenhum deles dentro
+  de uma função, todos apanhados na primeira vez que o processo inteiro
+  correu contra hardware falso. Foi barato: dois pseudo-terminais.
+- **A ordem entre verificar e gravar não é detalhe.** Verificar cedo
+  (falhar barato) e gravar tarde (só o que aconteceu) são requisitos
+  diferentes, e colapsá-los num único `record()` fez o ponto de regresso
+  ficar preso a um ARM que nunca existiu.
+- **É a quarta vez que este projeto tropeça na mesma família de
+  problema**: uma informação lida de um sítio que não é o que se pensa
+  (ack do STOP num buffer com restos, trama mais recente contra a mais
+  antiga, dois leitores da mesma porta, e agora o motivo do erro vindo do
+  contador errado). Vale a pena tratar isto como padrão e não como azar.
+
+#### Próximo passo
+- **No Pi:** `git pull`, e correr `main.py --gps --sim` com o NEO-8M mesmo
+  ligado. Ver o ponto de regresso a gravar-se com fixes verdadeiros e
+  confirmar que a dispersão da janela passa o critério dos 5 m ao ar
+  livre.
+- **Subir a cadência do NEO-8M para 5 Hz** (`UBX-CFG-RATE`). É o que
+  desbloqueia apertar o raio de chegada, e até lá os 4 m ficam em dívida.
+- Montar os três divisores 10k/2k e calibrar os canais de tensão do
+  ADS1015. É o que falta para a guarda de bateria deixar de ser teoria.
+- Quando a placa do BNO055 chegar: se for a da Devantech, **fechar o link
+  de I2C antes de a ligar**.
+
+### 2026-09-17 (sessão 2 — decisão: não há regresso por estima sem GPS)
+
+Pergunta levantada a seguir à integração do GPS: em vez de ficar parado
+quando perde o sinal, o Pi não podia inverter o sentido e refazer o
+percurso ao contrário até apanhar posição outra vez? Fica registada aqui
+porque a resposta é não, e porque daqui a três meses a pergunta volta.
+
+#### O que guiaria o retrocesso
+Refazer o caminho ao contrário exige saber o caminho, e sem GPS isso é
+estima: rumo × velocidade integrados no tempo. O barco **não tem sensor
+de velocidade nenhum** — a velocidade seria assumida a partir do impulso
+— e o rumo viria de um magnetómetro dentro de uma caixa ao lado de dois
+brushless e de LiPos. É o sensor menos fiável do sistema a comandar a
+manobra, sem nada com que o confrontar, porque o que o confrontava era
+exatamente o GPS que falhou.
+
+Ordens de grandeza, para não se discutir isto a olho:
+
+| erro | efeito em 150 m |
+|---|---|
+| 5° de rumo | 13 m de desvio lateral |
+| 10° de rumo | 26 m |
+| 10% na velocidade assumida | 15 m ao longo da rota |
+| corrente de 0,3 m/s (ida + volta de 300 m) | ~30 m, e **não cancela** |
+
+A corrente merece nota à parte: ao refazer a sequência de comandos ao
+contrário, ela continua a empurrar para o mesmo lado no referencial do
+fundo. O erro da ida **soma-se** ao da volta em vez de se anular.
+
+#### O argumento que fecha a questão
+**O erro do GPS é limitado; o da estima não é.** A dispersão medida a 15
+de setembro — 15 a 20 m no pior cenário possível, com metade do céu
+tapada — não piora com o tempo. Um estimador cego começa em zero e cresce
+para sempre. Trocar um erro limitado por um ilimitado é mau negócio,
+mesmo que nos primeiros trinta segundos pareça melhor.
+
+#### Não se sabe porque é que o GPS falhou
+As causas têm remédios opostos e o sistema não as distingue:
+
+- avaria do receptor ou da cablagem → o barco está onde pensa, andar era
+  aceitável;
+- antena tapada, multipath, reflexões → talvez;
+- **entrou água, capotou, a eletrónica está a morrer** → o barco não está
+  em estado de executar nada, e mandar impulso durante dois minutos só
+  espalha o estrago e afasta-o de quem o vai buscar.
+
+O único caso em que mexer é catastrófico é indistinguível dos outros. É a
+mesma lógica já escrita na guarda de bateria — "ficar cego conta como
+motivo para regressar" — só que aqui aponta ao contrário: ficar cego é
+motivo para **não** andar.
+
+#### O rádio torna o retrocesso desnecessário exatamente onde seria seguro
+Quatro casos:
+
+| | rádio a funcionar | rádio em baixo |
+|---|---|---|
+| **GPS em baixo** | o operador leva-o a casa à mão — melhor do que qualquer retrocesso autónomo | duas falhas independentes ao mesmo tempo ⇒ causa comum (energia, água). O pior momento possível para andar |
+| **GPS bom** | operação normal | já é caso de abortar |
+
+O retrocesso autónomo só ajudaria no canto superior esquerdo, e aí o
+operador faz melhor. **A condição que o tornaria seguro — haver rádio — é
+a mesma que o torna dispensável.**
+
+#### O que a ideia tem de certo, e que fica para fazer
+- **"Parado" não é "quieto".** Um catamarã à deriva com 0,3 m/s de
+  corrente anda 180 m em dez minutos. Vender o STOP como "fica onde está"
+  seria mentira, e o log tem de dizer isto quando descrever o
+  comportamento.
+- **Vale a pena CALCULAR a estima; não vale a pena ANDAR sobre ela.** Um
+  estimador a correr em paralelo com o GPS, enquanto o GPS é bom, dá duas
+  coisas de graça: (1) mede-se o erro da estima contra o GPS em contínuo,
+  no barco verdadeiro e na água verdadeira, e sai um número em metros por
+  minuto; (2) quando o GPS cai, o barco sabe dizer "último fix bom aqui,
+  palpite ali, a crescer a X m/min", que se transmite por rádio e serve
+  mesmo para uma busca.
+- Isto transforma a pergunta em aritmética: se a estima for boa a 5 m em
+  três minutos, o retrocesso passa a ser discutível com dados; se der
+  80 m, nunca foi boa ideia. É a política que o projeto já segue — números
+  de medição, não de datasheet.
+- **A resposta real a "como recupero o barco sem GPS" é telemetria, não
+  autonomia.** Saber onde ele está bate adivinhar para onde deve ir.
+
+#### Decisão
+- O comportamento em caso de perda de posição **mantém-se**: tolerância
+  curta, depois STOP e DISARMED, latching.
+- Fica em aberto, para registar na arquitetura como **OPEN-014**: estima
+  como **observador**, nunca como atuador — a correr em paralelo com o
+  GPS, com o erro medido contra ele e registado no CSV.
+- A questão do retrocesso só se reabre quando existirem as três coisas ao
+  mesmo tempo: rádio, rumo calibrado, e o erro da estima **medido**. Até
+  lá não há nada para decidir, só para especular.
+
+#### Lições aprendidas
+- **Autonomia completa não se ganha acrescentando comportamentos de
+  recuperação.** Ganha-se tendo sensores independentes que cheguem para
+  que uma falha isolada deixe o estado ainda confiável. Uma manobra que
+  age sobre uma estimativa única e não verificável *reduz* a segurança com
+  aparência de a aumentar — e essa aparência é que é perigosa, porque
+  passa em revisão.
+- **A condição de segurança e a condição de utilidade eram a mesma.** Foi
+  o argumento decisivo e não veio de contas: veio de perguntar "o que é
+  que tem de ser verdade para isto ser seguro?" e reparar que a resposta
+  era a mesma coisa que tornava a funcionalidade inútil. Vale a pena fazer
+  esta pergunta antes das contas, e não depois.
+- **A ordem de prioridades do projeto já tinha a resposta.** O
+  kill-switch remoto é obrigatório antes de qualquer ensaio sem corda, e
+  já se recusou um segundo IMU por vir antes do rádio. Construir
+  recuperação autónoma antes do rádio invertia exatamente a mesma regra.

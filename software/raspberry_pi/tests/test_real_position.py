@@ -11,7 +11,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from control.real_position import (PositionUnavailable, RealBoat,   # noqa: E402
+from control.real_position import (MAX_STALE_S,                    # noqa: E402
+                                   PositionUnavailable, RealBoat,
                                    RealPosition, ddmm_to_degrees,
                                    nmea_checksum_ok, parse_sentence)
 
@@ -282,7 +283,71 @@ def test_max_lines_limita_o_poll():
 def test_nao_e_sintetico():
     # O nav_guard() do main.py so deixa comandar motores com isto a False.
     assert RealPosition(FakePort()).SYNTHETIC is False
-    assert RealBoat(None, None).SYNTHETIC is False
+
+
+def test_real_boat_herda_a_proveniencia_das_fontes():
+    """Regressao: o RealBoat tinha SYNTHETIC = False fixo na classe.
+
+    Com GPS real e rumo sintetico -- a unica configuracao possivel
+    enquanto o BNO055 nao chega -- isso fazia o conjunto passar por real
+    e autorizava motores a seguir um rumo inventado. A regra passa a ser
+    a do nav_guard: basta uma fonte sintetica para o todo o ser, e uma
+    fonte que nao se declara conta como sintetica.
+    """
+    class _Real:
+        SYNTHETIC = False
+
+    class _Sintetica:
+        SYNTHETIC = True
+
+    class _Muda:
+        pass
+
+    assert RealBoat(_Real(), _Real()).SYNTHETIC is False
+    assert RealBoat(_Real(), _Sintetica()).SYNTHETIC is True
+    assert RealBoat(_Sintetica(), _Real()).SYNTHETIC is True
+    assert RealBoat(_Real(), _Muda()).SYNTHETIC is True
+    assert RealBoat(None, None).SYNTHETIC is True
+
+
+def test_max_stale_tolera_uma_trama_perdida_a_1hz():
+    """O valor por omissao tem de sobreviver a uma mensagem perdida.
+
+    Os 2,0 s que aqui estavam davam exatamente zero folga: a 1 Hz, com
+    uma falha, o fix seguinte chega ao limite e a posicao fica
+    indisponivel num arranque normal.
+    """
+    assert MAX_STALE_S > 2.0, "sem folga para uma trama perdida a 1 Hz"
+    assert MAX_STALE_S < 3.0, "folga a mais: posicao velha de mais de 3 s"
+    assert RealPosition(FakePort()).max_stale_s == MAX_STALE_S
+
+
+def test_fix_age_nao_decide_nada():
+    """A idade mostra-se; quem decide e o position(), e so ele."""
+    c = FakeClock()
+    p = RealPosition(FakePort([GGA_BOM]), clock=c)
+    assert p.fix_age() is None, "idade inventada sem fix nenhum"
+    p.poll()
+    assert p.fix_age() == 0.0
+    c.t += 60.0
+    # velho de mais para o position(), e mesmo assim devolve a idade
+    assert p.fix_age() == 60.0
+    try:
+        p.position()
+    except PositionUnavailable:
+        pass
+    else:
+        assert False, "devolveu uma posicao de ha 60 s"
+
+
+def test_last_reject_diz_a_causa():
+    """Causas com remedios opostos nao podem sair como a mesma mensagem."""
+    p = RealPosition(FakePort([GGA_POUCOS_SATS]))
+    p.poll()
+    assert "satelites" in p.last_reject
+    p = RealPosition(FakePort([GGA_HDOP_MAU]))
+    p.poll()
+    assert "HDOP" in p.last_reject
 
 
 def test_real_boat_expoe_a_interface_do_simulado():

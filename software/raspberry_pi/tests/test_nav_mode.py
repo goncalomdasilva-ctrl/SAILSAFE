@@ -15,9 +15,12 @@ from control.heading import HeadingController, heading_error
 from control.navigation import WaypointNav, haversine_m
 from control.sources import SimulatedBoat
 from control.real_heading import RealHeading
-from main import (nav_step, nav_guard, is_synthetic, parse_args,
-                  NAV_RECUSADO, NAV_SEM_MOTORES, NAV_COM_MOTORES,
-                  MISSION_START, MISSION_WAYPOINTS,
+from control.real_position import PositionUnavailable, RealBoat, RealPosition
+from control.sources import SimulatedHeading
+from main import (nav_step, nav_guard, is_synthetic, parse_args, mission_from,
+                  PositionWatch, NAV_RECUSADO, NAV_SEM_MOTORES, NAV_COM_MOTORES,
+                  MISSION_START, MISSION_WAYPOINTS, MISSION_OFFSETS_M,
+                  NAV_POS_MISSES,
                   ARRIVAL_RADIUS_M, NAV_THROTTLE, SAFE_MAX, HEARTBEAT_S)
 
 
@@ -199,6 +202,161 @@ def test_por_omissao_a_linha_de_comandos_e_a_mais_segura():
     assert not a.sim and not a.sim_motores
     assert parse_args(["--sim"]).sim
     assert parse_args(["--sim-motores"]).sim_motores
+
+
+# --- missao a partir de uma origem --------------------------------------
+
+def test_mission_from_reproduz_os_waypoints_historicos():
+    """Os waypoints derivados tem de dar os que estavam escritos a mao."""
+    wps = mission_from(*MISSION_START)
+    assert len(wps) == len(MISSION_WAYPOINTS)
+    for (a_lat, a_lon), (b_lat, b_lon) in zip(wps, MISSION_WAYPOINTS):
+        approx(a_lat, b_lat, 1e-9)
+        approx(a_lon, b_lon, 1e-9)
+
+
+def test_mission_from_da_as_distancias_pedidas():
+    """40 m a Norte tem de ser 40 m a Norte, medidos com haversine."""
+    origem = (38.70, -9.14)
+    wps = mission_from(*origem, offsets=[(40.0, 0.0), (40.0, 40.0)])
+    approx(haversine_m(*origem, *wps[0]), 40.0, 0.5)
+    approx(haversine_m(*origem, *wps[1]), (40.0 ** 2 + 40.0 ** 2) ** 0.5, 0.5)
+
+
+def test_mission_from_segue_a_origem():
+    """Mudar a origem tem de mudar a missao toda, e nao so o primeiro ponto."""
+    a = mission_from(38.70, -9.14)
+    b = mission_from(38.80, -9.14)
+    for (a_lat, _), (b_lat, _) in zip(a, b):
+        assert abs(b_lat - a_lat - 0.10) < 1e-6
+
+
+# --- proveniencia do RealBoat -------------------------------------------
+# Regressao de um defeito real: o RealBoat tinha SYNTHETIC = False fixo na
+# classe. Com GPS real e rumo sintetico -- que e exatamente a configuracao
+# possivel enquanto o BNO055 nao chega -- declarava-se real, o nav_guard
+# via fontes reais e deixava motores seguirem um rumo inventado.
+
+class _PosicaoReal:
+    SYNTHETIC = False
+
+    def position(self):
+        return (38.70, -9.14)
+
+
+def test_real_boat_com_rumo_sintetico_conta_como_sintetico():
+    b = RealBoat(_PosicaoReal(), SimulatedHeading())
+    assert is_synthetic(b), "GPS real + rumo sintetico nao pode passar por real"
+    modo, motivo = nav_guard([b])
+    assert modo == NAV_RECUSADO, "motores autorizados a seguir um rumo inventado"
+
+
+def test_real_boat_com_as_duas_fontes_reais_conta_como_real():
+    b = RealBoat(_PosicaoReal(), RealHeading(driver=object()))
+    assert not is_synthetic(b)
+    modo, _ = nav_guard([b])
+    assert modo == NAV_COM_MOTORES
+
+
+def test_real_boat_sem_fontes_conta_como_sintetico():
+    """Falhar fechado: fontes que nao se declaram contam como sinteticas."""
+    assert is_synthetic(RealBoat(None, None))
+
+
+def test_real_boat_com_gps_e_sim_calcula_sem_propulsao():
+    """A combinacao util de hoje: posicao real, rumo sintetico, sem motores."""
+    modo, _ = nav_guard([RealBoat(_PosicaoReal(), SimulatedHeading())],
+                        allow_sim=True)
+    assert modo == NAV_SEM_MOTORES
+
+
+# --- perda de posicao em NAV --------------------------------------------
+
+def test_uma_falha_nao_aborta():
+    """A 1 Hz, uma trama perdida poe a idade no limite. Nao e uma avaria."""
+    w = PositionWatch(max_misses=3)
+    assert not w.miss("fix velho")
+    assert not w.tripped
+
+
+def test_aborta_ao_fim_da_tolerancia():
+    w = PositionWatch(max_misses=3)
+    assert not w.miss("x")
+    assert not w.miss("x")
+    assert w.miss("x"), "nao abortou ao terceiro ciclo sem posicao"
+    assert w.tripped and "3 ciclos" in w.reason
+
+
+def test_posicao_valida_limpa_a_contagem():
+    """Falhas isoladas nao se somam ao longo de uma missao inteira."""
+    w = PositionWatch(max_misses=3)
+    for _ in range(10):
+        w.miss("x")
+        w.ok()
+        assert not w.tripped, "falhas isoladas somaram-se ate abortar"
+
+
+def test_o_aborto_e_latching():
+    """Recuperar o fix nao recomeca a missao. Tem de ser um gesto humano."""
+    w = PositionWatch(max_misses=2)
+    w.miss("x")
+    w.miss("x")
+    assert w.tripped
+    assert w.ok() is True, "o GPS a voltar a si desfez o aborto"
+    assert w.tripped
+
+
+def test_reset_limpa_o_aborto():
+    w = PositionWatch(max_misses=2)
+    w.miss("x")
+    w.miss("x")
+    w.reset()
+    assert not w.tripped and w.misses == 0
+
+
+def test_o_motivo_guardado_e_o_do_aborto():
+    """O que fica no log e a falha que abortou, nao a ultima que passou."""
+    w = PositionWatch(max_misses=2)
+    w.miss("HDOP mau")
+    w.miss("fix ha 4.0 s")
+    motivo = w.reason
+    w.miss("outra coisa qualquer")
+    assert w.reason == motivo, "o motivo do aborto foi reescrito"
+
+
+def test_orcamento_de_silencio_cabe_debaixo_do_failsafe_do_esp32():
+    """Durante a tolerancia sai heartbeat 0/0, portanto o failsafe nao dispara.
+
+    O que este teste protege e a ordem das duas camadas: se a tolerancia
+    fosse mais longa do que o intervalo entre heartbeats, haveria ciclos
+    sem comando nenhum e o failsafe do ESP32 travava a propulsao antes de
+    o Pi ter decidido fosse o que fosse. As camadas encadeiam-se, nao
+    competem.
+    """
+    assert NAV_POS_MISSES >= 2, "abortar a primeira falha e um alarme falso"
+    assert NAV_POS_MISSES * HEARTBEAT_S < 1.0, \
+        "tolerancia mais longa que o failsafe de ~1 s do ESP32"
+
+
+def test_nav_step_propaga_a_falta_de_posicao():
+    """O nav_step nao pode engolir a excecao nem inventar uma posicao."""
+    class _SemPosicao:
+        SYNTHETIC = False
+        heading = 0.0
+
+        def position(self):
+            raise PositionUnavailable("sem fix: teste")
+
+        def update(self, left, right, dt=1.0):
+            raise AssertionError("update() chamado sem posicao")
+
+    _, nav, ctrl = _fresh()
+    try:
+        nav_step(nav, ctrl, _SemPosicao())
+    except PositionUnavailable:
+        pass
+    else:
+        assert False, "nav_step navegou sem posicao"
 
 
 def _run():

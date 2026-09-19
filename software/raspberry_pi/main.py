@@ -15,6 +15,13 @@ Maquina de estados: DISARMED <-> ARMED / NAV.
 - O regresso da ligacao serie nunca arma sozinho.
 - Fontes sinteticas NUNCA comandam motores sem ser pedido na linha de
   comandos. Ver nav_guard() e os modos --sim / --sim-motores.
+- Com --gps a posicao vem do NEO-8M e e registada em todos os estados,
+  nao so em NAV: uma sessao de bancada passa a deixar dados de dispersao
+  sem ser preciso correr o tools/gps_bench.py ao lado.
+- Perder posicao em NAV leva a estado seguro, com a mesma politica da
+  perda de serie e uma tolerancia curta. Ver PositionWatch.
+- O ponto de regresso e gravado no ARM, a partir de fixes validados, e
+  nao se reescreve. Sem ele, com --gps, o ARM e recusado.
 - O STOP e repetido ate o ESP32 confirmar; nao confirmar e ruidoso e fica
   no log. Ver communication/serial_link.py.
 - ARMAR exige confirmacao de que a trava do ESP32 abriu. Sem prova de que
@@ -28,6 +35,7 @@ Comandos: a=ARM  n=NAV  d=DISARM  s=STOP  q=sair
 """
 
 import argparse
+import math
 import os
 import signal
 import time
@@ -39,7 +47,9 @@ from telemetry.logger import SessionLogger
 from control.heading import HeadingController
 from control.mixer import mix
 from control.navigation import WaypointNav
-from control.sources import SimulatedBoat
+from control.real_position import PositionUnavailable, RealBoat, create_neo8m
+from control.return_point import ReturnPoint, ReturnPointUnavailable
+from control.sources import SimulatedBoat, SimulatedHeading
 
 HEARTBEAT_S = 0.2
 RECONNECT_S = 10
@@ -48,13 +58,43 @@ NAV_THROTTLE = 20    # impulso base em NAV, com margem para o steer
 ARRIVAL_RADIUS_M = 4.0
 DISARMED, ARMED, NAV = "DISARMED", "ARMED", "NAV"
 
-# Missao SINTETICA de demonstracao: 40 m a Norte, depois 40 m a Este.
-# Substituir por waypoints reais quando houver GPS.
+GPS_PORT = "/dev/serial0"
+GPS_POLL_S = 0.5     # o modulo emite a 1 Hz; ler ao dobro nao deixa acumular
+GPS_LOG_S = 1.0      # uma linha de posicao por segundo no CSV da sessao
+GPS_PRINT_S = 5.0    # no ecra e so para o operador ver que ha sinal
+
+# Ciclos de NAV seguidos sem posicao antes de abortar a missao. Ver
+# PositionWatch para o porque de nao ser 1.
+NAV_POS_MISSES = 3
+
+# Missao SINTETICA de demonstracao: 40 m a Norte, depois mais 40 m a Este.
+# As coordenadas sao DERIVADAS de uma origem, e nao escritas a mao, para
+# que a mesma missao possa ser montada a partir do ponto de regresso real
+# quando ha GPS. Waypoints absolutos so tinham sentido enquanto a origem
+# tambem era inventada.
 MISSION_START = (38.73600, -9.14000)
-MISSION_WAYPOINTS = [
-    (38.736359, -9.140000),   # ~40 m a Norte  (bearing 0)
-    (38.736359, -9.139539),   # ~40 m a Este   (bearing 90)
+MISSION_OFFSETS_M = [
+    (40.0, 0.0),     # ~40 m a Norte  (bearing 0)
+    (40.0, 40.0),    # e mais ~40 m a Este  (bearing 90 no segundo troco)
 ]
+
+METRES_PER_DEG_LAT = 111320.0
+
+
+def mission_from(lat, lon, offsets=MISSION_OFFSETS_M):
+    """Waypoints a partir de uma origem, com deslocamentos em metros.
+
+    offsets sao pares (norte, este) em metros. A conversao usa a latitude
+    da origem para todos os pontos: a esta escala (dezenas de metros) a
+    diferenca e de centimetros, muito abaixo da dispersao do proprio GPS.
+    Nao serve para missoes de quilometros, e nao e para isso que existe.
+    """
+    escala_lon = METRES_PER_DEG_LAT * math.cos(math.radians(lat))
+    return [(lat + norte / METRES_PER_DEG_LAT, lon + este / escala_lon)
+            for norte, este in offsets]
+
+
+MISSION_WAYPOINTS = mission_from(*MISSION_START)
 
 running = True
 
@@ -63,6 +103,35 @@ def shutdown(signum, frame):
     global running
     print(f"\n[INFO] Sinal {signum} recebido. A terminar em seguranca.", flush=True)
     running = False
+
+
+def motivo_sem_fix(gps):
+    """Porque e que nao ha posicao agora, em linguagem util.
+
+    O last_reject do RealPosition diz porque e que a ultima trama foi
+    RECUSADA por criterio -- satelites, HDOP, ilha nula. Nao cobre o caso
+    em que houve fixes bons e o modulo se calou: aí nada foi recusado, e o
+    last_reject fica preso no "ainda sem leituras" do arranque, que e
+    exatamente a mensagem errada. Silencio e recusa sao defeitos com
+    remedios opostos, e o ecra tem de os distinguir.
+    """
+    idade = gps.fix_age()
+    if idade is not None and idade > gps.max_stale_s:
+        return (f"ultimo fix ha {idade:.1f} s (maximo "
+                f"{gps.max_stale_s:.1f} s) -- modulo calado")
+    return gps.last_reject
+
+
+def qualidade(valor, fmt=".2f"):
+    """Formata satelites/HDOP, que podem nao existir.
+
+    As tramas RMC dao posicao e nao dao qualidade nenhuma: satellites e
+    hdop vem a None e o Fix e aceite na mesma, porque o estado 'A' ja diz
+    que ha fix. Quem regista isto tem de saber a diferenca entre "nao
+    medido" e "zero" -- formatar None como se fosse numero rebenta, e
+    imprimir 0 seria pior, porque parecia uma medicao.
+    """
+    return "n/d" if valor is None else format(valor, fmt)
 
 
 NavStep = namedtuple("NavStep", "left right bearing dist done lat lon")
@@ -149,6 +218,73 @@ def nav_guard(sources, allow_sim=False, sim_drives_motors=False):
                           "Motores reais nao seguem um barco imaginario.")
 
 
+# --- perda de posicao em NAV --------------------------------------------
+# O RealPosition ja se recusa a devolver uma posicao velha: passados
+# max_stale_s levanta PositionUnavailable em vez de entregar a ultima
+# conhecida. Falta decidir o que o barco faz com essa recusa, e e isso que
+# esta classe decide.
+#
+# Porque nao abortar a primeira falha: a 1 Hz, uma unica trama perdida
+# poe a idade do fix no limite. Um aborto por cada mensagem perdida seria
+# um alarme a disparar quando nao se passa nada -- e o projeto ja escreveu,
+# a proposito dos contadores do gps_bench, que um alarme desses e pior do
+# que nao existir, porque se aprende a ignora-lo.
+#
+# Porque nao seguir em frente: navegar sem posicao e navegar as cegas, e a
+# unica coisa que o barco sabe fazer as cegas e continuar a andar para onde
+# estava virado. Durante a tolerancia a propulsao vai a ZERO e o heartbeat
+# continua -- o barco fica parado e comandavel, em vez de parado pelo
+# failsafe ou a andar sem saber para onde.
+#
+# O orcamento total de silencio e max_stale_s + max_misses * HEARTBEAT_S,
+# hoje 2,5 + 3 x 0,2 = 3,1 s.
+
+class PositionWatch:
+    """Conta falhas seguidas de posicao e decide quando abortar a missao.
+
+    LATCHING, pela mesma razao da guarda de bateria e da trava do ESP32:
+    recuperar o fix nao desfaz o aborto. Um GPS que volta a si sozinho
+    reiniciaria a missao a meio, sem ninguem ter decidido nada -- e um
+    caminho de "parado por falha" para "a andar" sem gesto humano pelo
+    meio e exatamente o que o resto do sistema recusa ter.
+
+    Nao faz I/O: quem chama e que apanha a excecao e reporta o resultado.
+    """
+
+    def __init__(self, max_misses=NAV_POS_MISSES):
+        self.max_misses = max_misses
+        self.misses = 0
+        self.tripped = False
+        self.reason = ""
+
+    def ok(self):
+        """Posicao valida: limpa a contagem. Nao levanta um aborto ja dado."""
+        self.misses = 0
+        return self.tripped
+
+    def miss(self, motivo):
+        """Falha de posicao. Devolve True quando a missao tem de abortar."""
+        self.misses += 1
+        if self.misses >= self.max_misses:
+            if not self.tripped:
+                self.reason = f"{self.misses} ciclos sem posicao: {motivo}"
+            self.tripped = True
+        return self.tripped
+
+    def reset(self):
+        """Limpa o aborto. Gesto explicito -- entrar em NAV ou em ARM."""
+        self.misses = 0
+        self.tripped = False
+        self.reason = ""
+
+    def describe(self):
+        if self.tripped:
+            return f"abortado ({self.reason})"
+        if self.misses:
+            return f"{self.misses}/{self.max_misses} ciclos sem posicao"
+        return "posicao valida"
+
+
 def nav_step(nav, ctrl, boat, throttle=NAV_THROTTLE, cap=SAFE_MAX, dt=HEARTBEAT_S):
     """Um passo de navegacao autonoma, sem qualquer I/O.
 
@@ -181,6 +317,16 @@ def parse_args(argv=None):
     p.add_argument("--sim-motores", action="store_true", dest="sim_motores",
                    help="PERIGO: NAV com fontes sinteticas a comandar mesmo os "
                         "motores. So com o barco preso na bancada.")
+    p.add_argument("--esp32-port", default=None, dest="esp32_port",
+                   help="porta serie do ESP32. Por omissao a do SerialLink "
+                        "(/dev/ttyUSB0). Um nome estavel de "
+                        "/dev/serial/by-id/ evita que dois dispositivos USB "
+                        "troquem de numero entre arranques.")
+    p.add_argument("--gps", action="store_true",
+                   help="usa o GPS real (NEO-8M) como fonte de posicao. Sem "
+                        "isto a posicao e a do barco sintetico.")
+    p.add_argument("--gps-port", default=GPS_PORT, dest="gps_port",
+                   help=f"porta serie do GPS (por omissao {GPS_PORT})")
     p.add_argument("--control-fifo", default=DEFAULT_FIFO, dest="control_fifo",
                    help=f"FIFO de comandos (por omissao {DEFAULT_FIFO}). "
                         "Vazio desliga o FIFO.")
@@ -202,7 +348,7 @@ def main(argv=None):
     log.log("BOOT", state, f"pid={os.getpid()}")
     print(f"[STATE] {state}", flush=True)
 
-    link = SerialLink()
+    link = SerialLink(args.esp32_port) if args.esp32_port else SerialLink()
     if link.connect():
         print("[INFO] Ligacao serie ao ESP32 ativa", flush=True)
         log.log("SERIAL", state, "conectado")
@@ -212,13 +358,45 @@ def main(argv=None):
 
     last_hb = 0.0
     last_reconnect = time.monotonic()
+    last_gps = 0.0
+    last_gps_log = 0.0
+    last_gps_print = 0.0
 
     # Navegacao. Posicao e rumo vem de um barco SINTETICO (sem GPS, BNO055
     # nem motores): em NAV os comandos enviados realimentam-no, fechando a
     # malha nav -> heading hold -> mixer -> barco -> posicao.
     ctrl = HeadingController(kp=2.0, max_steer=100.0)
-    boat = SimulatedBoat(MISSION_START[0], MISSION_START[1],
-                         heading=0.0, yaw_gain=0.4, speed_ms=3.0)
+    gps = None
+    home = ReturnPoint()
+    watch = PositionWatch()
+
+    if args.gps:
+        try:
+            gps = create_neo8m(device=args.gps_port)
+        except Exception as e:                                  # noqa: BLE001
+            # Pediram GPS e nao ha GPS. Continuar sem ele era correr um
+            # sistema diferente daquele que foi pedido, com o barco
+            # sintetico a fazer de posicao e ninguem a dar por isso. Sair
+            # e a unica leitura honesta.
+            print(f"[ALERTA] --gps pedido e a porta {args.gps_port} nao abriu: "
+                  f"{e}", flush=True)
+            print("[ALERTA] Verificar enable_uart=1, dtoverlay=disable-bt e "
+                  "que /dev/serial0 aponta para ttyAMA0.", flush=True)
+            log.log("ALERTA", state, f"gps nao abriu: {e}")
+            log.close()
+            raise SystemExit(2)
+        print(f"[GPS] NEO-8M em {args.gps_port}", flush=True)
+        log.log("GPS", state, f"porta {args.gps_port}")
+
+    if gps is not None:
+        # Posicao real, rumo sintetico enquanto nao ha BNO055. O RealBoat
+        # declara-se sintetico por causa do rumo, e por isso o nav_guard
+        # continua a recusar motores -- que e o que se quer: com um rumo
+        # inventado, propulsao real nao sai daqui.
+        boat = RealBoat(gps, SimulatedHeading(heading=0.0, yaw_gain=0.4))
+    else:
+        boat = SimulatedBoat(MISSION_START[0], MISSION_START[1],
+                             heading=0.0, yaw_gain=0.4, speed_ms=3.0)
     nav = WaypointNav(MISSION_WAYPOINTS, arrival_radius_m=ARRIVAL_RADIUS_M)
 
     # As fontes nao mudam durante a execucao, portanto a guarda decide-se
@@ -239,6 +417,13 @@ def main(argv=None):
               "motores reais.", flush=True)
         print("[AVISO] O barco fisico nao sabe onde esta. So com ele preso "
               "e fora de agua.", flush=True)
+
+    if gps is not None:
+        print("[GPS] posicao real. O ARM grava o ponto de regresso e e "
+              "recusado sem ele.", flush=True)
+        print(f"[GPS] tolerancia em NAV: {NAV_POS_MISSES} ciclos sem posicao "
+              f"(~{NAV_POS_MISSES * HEARTBEAT_S:.1f} s alem da idade maxima do "
+              f"fix) antes de abortar.", flush=True)
 
     with CommandBus(fifo_path=args.control_fifo,
                     use_tty=not args.no_tty) as bus:
@@ -273,7 +458,26 @@ def main(argv=None):
                     print(f"[STATE] {state}", flush=True)
                 elif k == "a":
                     if state == DISARMED:
-                        if link.is_open:
+                        # O ponto de regresso e a PRIMEIRA condicao, antes
+                        # de se falar com o ESP32. Duas razoes: nao vale a
+                        # pena destravar a propulsao para um ARM que vai ser
+                        # recusado a seguir, e a condicao mais barata e a
+                        # que deve falhar primeiro.
+                        #
+                        # Sem --gps nao ha ponto de regresso para gravar e
+                        # esta condicao nao existe -- na bancada, sem
+                        # posicao nenhuma, exigi-la so impediria trabalho.
+                        # E com GPS a regra e a mesma que ja vale para a
+                        # trava: nao se anuncia ARMED sem saber para onde
+                        # e que o barco volta.
+                        pode_regresso, motivo_regresso = (
+                            home.check() if gps is not None else (True, ""))
+                        if not pode_regresso:
+                            print(f"[WARN] ARM recusado: ponto de regresso "
+                                  f"por gravar - {motivo_regresso}", flush=True)
+                            log.log("WARN", state,
+                                    f"arm recusado: regresso - {motivo_regresso}")
+                        elif link.is_open:
                             # O ESP32 arranca com a propulsao travada e volta a
                             # travar sempre que o failsafe dispara. A trava so
                             # abre com um comando de paragem, e armar e o
@@ -283,10 +487,36 @@ def main(argv=None):
                             # saber se a trava abriu -- e o operador ficava a
                             # acreditar num estado que o firmware nao tem.
                             if stop_confirmado(link, log, state, "arm"):
-                                state = ARMED
-                                last_hb = 0.0
-                                log.log("STATE", state, "arm")
-                                print(f"[STATE] {state}", flush=True)
+                                # Verificado antes da trava, GRAVADO so
+                                # aqui: o ponto de regresso pertence a um
+                                # ARM que aconteceu, nao a um que falhou.
+                                gravado = None
+                                if gps is not None:
+                                    try:
+                                        gravado = home.record()
+                                    except ReturnPointUnavailable as e:
+                                        # A janela azedou entre a
+                                        # verificacao e a trava (~0,24 s).
+                                        # Raro, e mesmo assim nao se arma.
+                                        print(f"[WARN] ARM recusado: o ponto "
+                                              f"de regresso deixou de ser "
+                                              f"gravavel - {e}", flush=True)
+                                        log.log("WARN", state,
+                                                f"arm recusado: regresso "
+                                                f"perdido - {e}")
+                                if gps is not None and gravado is None:
+                                    pass          # recusado mesmo acima
+                                else:
+                                    state = ARMED
+                                    last_hb = 0.0
+                                    watch.reset()
+                                    log.log("STATE", state, "arm")
+                                    if gravado is not None:
+                                        log.log("REGRESSO", state,
+                                                home.describe())
+                                        print(f"[REGRESSO] {home.describe()}",
+                                              flush=True)
+                                    print(f"[STATE] {state}", flush=True)
                             else:
                                 print("[WARN] ARM recusado: a trava do ESP32 "
                                       "nao confirmou abertura", flush=True)
@@ -315,23 +545,80 @@ def main(argv=None):
                             print("[WARN] NAV recusado: a trava do ESP32 nao "
                                   "confirmou abertura", flush=True)
                             log.log("WARN", state, "nav recusado: trava nao confirmada")
+                        elif gps is not None and not home.is_set:
+                            # Com posicao real, a missao mede-se a partir do
+                            # ponto de regresso. Sem ele nao ha de onde
+                            # contar os waypoints -- e, mais a serio, nao ha
+                            # para onde voltar se a missao abortar.
+                            print("[WARN] NAV recusado: ponto de regresso por "
+                                  "gravar (armar primeiro)", flush=True)
+                            log.log("WARN", state, "nav recusado: sem regresso")
                         else:
                             state = NAV
-                            # missao recomecada do inicio, a partir da posicao atual
-                            nav = WaypointNav(MISSION_WAYPOINTS,
+                            # Com GPS, os waypoints contam-se do ponto de
+                            # regresso; sem ele, da origem sintetica. Em
+                            # ambos os casos a missao recomeca do inicio.
+                            if gps is not None:
+                                waypoints = mission_from(*home.position())
+                            else:
+                                waypoints = MISSION_WAYPOINTS
+                            nav = WaypointNav(waypoints,
                                               arrival_radius_m=ARRIVAL_RADIUS_M)
                             ctrl.clear_target()
+                            watch.reset()
                             last_hb = 0.0
                             log.log("STATE", state,
-                                    f"missao {len(MISSION_WAYPOINTS)} wp ({nav_mode})")
+                                    f"missao {len(waypoints)} wp ({nav_mode})")
                             print(f"[STATE] {state} (navegacao por waypoints, "
-                                  f"{len(MISSION_WAYPOINTS)} wp, {nav_mode})", flush=True)
+                                  f"{len(waypoints)} wp, {nav_mode})", flush=True)
                 elif k == "d":
                     if state != DISARMED:
                         state = DISARMED
                         stop_confirmado(link, log, state, "disarm")
                         log.log("STATE", state, "disarm")
                         print(f"[STATE] {state}", flush=True)
+
+                # GPS: le-se em TODOS os estados, nao so em NAV. Uma
+                # sessao de bancada passa a deixar um registo de posicao
+                # com satelites, HDOP e idade do fix, que e a materia
+                # prima para refazer a dispersao no local sem ter de
+                # correr o gps_bench ao lado. Alimenta tambem a janela do
+                # ponto de regresso, para que o ARM encontre a janela ja
+                # cheia em vez de ter de esperar por ela.
+                if gps is not None and now - last_gps >= GPS_POLL_S:
+                    last_gps = now
+                    pos = gps.position_or_none()
+                    fix = gps.last_fix
+                    idade = gps.fix_age()
+                    if pos is not None:
+                        home.feed(*pos)
+                    if now - last_gps_log >= GPS_LOG_S:
+                        last_gps_log = now
+                        if pos is not None and fix is not None:
+                            log.log("GPS", state,
+                                    f"lat={pos[0]:.6f} lon={pos[1]:.6f} "
+                                    f"sats={qualidade(fix.satellites, '.0f')} "
+                                    f"hdop={qualidade(fix.hdop)} "
+                                    f"idade={idade:.1f} fonte={fix.source}")
+                        else:
+                            st = gps.stats
+                            log.log("GPS", state,
+                                    f"sem posicao: {motivo_sem_fix(gps)} "
+                                    f"(tramas={st.seen} checksum_mau="
+                                    f"{st.bad_checksum} sem_fix={st.no_fix} "
+                                    f"recusadas={st.rejected} "
+                                    f"aceites={st.accepted})")
+                    if now - last_gps_print >= GPS_PRINT_S:
+                        last_gps_print = now
+                        if pos is not None and fix is not None:
+                            print(f"[GPS] {pos[0]:.6f}, {pos[1]:.6f}  "
+                                  f"sats={qualidade(fix.satellites, '.0f')} "
+                                  f"hdop={qualidade(fix.hdop)} "
+                                  f"idade={idade:.1f} s  "
+                                  f"regresso: {home.describe()}", flush=True)
+                        else:
+                            print(f"[GPS] sem posicao: {motivo_sem_fix(gps)}",
+                                  flush=True)
 
                 if not link.is_open and now - last_reconnect >= RECONNECT_S:
                     last_reconnect = now
@@ -355,8 +642,36 @@ def main(argv=None):
                     log.log("TX", state, "0,0")
                 elif state == NAV and now - last_hb >= HEARTBEAT_S:
                     last_hb = now
-                    step = nav_step(nav, ctrl, boat)
-                    if step.done:
+                    try:
+                        step = nav_step(nav, ctrl, boat)
+                    except PositionUnavailable as e:
+                        # Sem posicao nao se navega. Enquanto se tolera, a
+                        # propulsao vai a ZERO e o heartbeat continua: o
+                        # barco fica parado e comandavel, em vez de parado
+                        # pelo failsafe ou a andar sem saber para onde.
+                        step = None
+                        if watch.miss(str(e)):
+                            state = DISARMED
+                            stop_confirmado(link, log, state, "sem posicao")
+                            log.log("NAV", state, f"abortado: {watch.reason}")
+                            print(f"[ALERTA] Posicao perdida -> DISARMED "
+                                  f"({watch.reason})", flush=True)
+                            print("[ALERTA] Recuperar o fix nao recomeca a "
+                                  "missao. Armar outra vez, de proposito.",
+                                  flush=True)
+                            print(f"[STATE] {state}", flush=True)
+                        else:
+                            link.send_motors(0, 0)
+                            log.log("TX", state, "0,0 (sem posicao)")
+                            log.log("NAV", state,
+                                    f"sem posicao ({watch.describe()}): {e}")
+                            print(f"[WARN] sem posicao ({watch.describe()}): "
+                                  f"{e}", flush=True)
+                    else:
+                        watch.ok()
+                    if step is None:
+                        pass          # perda de posicao, ja tratada acima
+                    elif step.done:
                         # missao cumprida: parar e regressar ao estado seguro
                         state = DISARMED
                         stop_confirmado(link, log, state, "fim de missao")
