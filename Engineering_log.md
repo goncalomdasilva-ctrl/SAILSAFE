@@ -2384,3 +2384,128 @@ a mesma que o torna dispensável.**
   kill-switch remoto é obrigatório antes de qualquer ensaio sem corda, e
   já se recusou um segundo IMU por vir antes do rádio. Construir
   recuperação autónoma antes do rádio invertia exatamente a mesma regra.
+
+### 2026-09-20 (decisão: fundo dos alojamentos sobe de z=45 para z=80)
+
+Revisão do blueprint e do CAD antes de o marceneiro cortar o contraplacado.
+A revisão em si correu bem — o modelo v6_4 não tem colisões, os 87 sólidos
+estão mapeados e tudo o que vai na caixa IP66 cabe lá. O que não está bem é
+o orçamento de massa, e ele decide uma cota que vai ser cortada em madeira.
+
+#### O problema
+O blueprint põe o fundo dos alojamentos das baterias a **z=45**, descrito
+como «6 mm acima da linha de água estática», com a WL a 39 mm. Esses 39 mm
+saem de uma massa de **6,2 kg** que a própria folha marca como estimativa —
+*«PESAR antes de cortar»*.
+
+O `verify_concept.py` no v6_4 dá **11,63 kg**, o que pela área de flutuação
+implícita (0,159 m²) daria uma WL de **73 mm** — 28 mm acima do fundo do
+alojamento.
+
+Refazendo as contas com o material que está mesmo na lista de compras —
+**okoumé**, ~430 kg/m³, e não contraplacado genérico a 650 — um casco
+completo (pele + XPS + epóxi + proa em fibra) dá-me ~0,96 kg, contra os
+2,2 kg que a tabela assume. Total revisto: **~7,4 kg, WL ≈ 47 mm**.
+
+**Três estimativas — 6,2 / 7,4 / 11,6 kg — e nenhuma foi pesada.** As WL
+correspondentes são 39 / 47 / 73 mm. O fundo a z=45 está acima da primeira
+e abaixo das outras duas.
+
+#### Porque é que isto importa, já que o alojamento é selado
+Não é hidrostática: 2 mm de coluna de água são ~20 Pa, não é nada. O
+argumento é o da **consequência de uma falha do forro**, e tem duas partes
+que não são óbvias:
+
+1. **A linha de água estática não é o nível real.** Com o caimento à popa
+   (x_G 469 contra LCB 456), ondulação e a esteira do próprio barco, o nível
+   contra o costado anda bastante acima do estático em andamento.
+2. **O respiro obrigatório trabalha contra nós neste cenário.** A regra 18.4
+   — LiPo nunca em volume estanque — obriga aos 2 entalhes de 2 mm no
+   rebordo, e está certa. Mas significa que o alojamento está aberto à
+   atmosfera pelo topo: se o forro ceder por baixo, a água sobe até igualar
+   o nível exterior e fica lá. Um compartimento estanque criaria uma bolha
+   de ar que limitaria a entrada; este não pode, por construção.
+
+Somando a ausência de sensor de sentina: com o forro acima da água, uma
+falha dá um alojamento húmido que se descobre ao abrir a escotilha; abaixo
+dela, dá um alojamento cheio com LiPos lá dentro e nada que avise.
+
+E o forro não é uma junta que se inspecione — é epóxi sobre topo de
+contraplacado de 3 mm, num compartimento que se abre a cada saída e por onde
+se arrasta uma bateria numa fita. Falha por abrasão, e falha invisível.
+
+#### A cota nova: z = 80
+Escolhida para ser robusta às três estimativas em vez de depender da que
+ainda não foi medida:
+
+| massa | WL | margem com fundo a 80 |
+|---|---|---|
+| 6,2 kg (blueprint) | 39 | 41 mm |
+| 7,4 kg (revista) | 47 | 33 mm |
+| 11,6 kg (CAD) | 73 | 7 mm |
+
+Custo da subida, verificado no corte A-A da folha 3/5: o alojamento é um
+**poço aberto até ao convés** — a LiPo assenta no fundo e tem espaço livre
+por cima. Subir o fundo só torna o poço menos fundo, não colide com nada.
+
+- topo da bateria passa de z=80 para z=115; face inferior do convés a ~143,
+  sobram **28 mm** de poço para a patilha de webbing (que é o que tira a
+  bateria — a folga lateral de 5–7 mm nunca permitiu fazê-lo com os dedos);
+- z_G sobe ~5 mm (1,10 kg de LiPos a subir 35 mm num barco de ~7,4 kg).
+  Irrelevante num catamarã com 350 mm de boca;
+- o XPS por baixo do alojamento passa de 39 para 74 mm — quase o dobro de
+  espuma sólida debaixo das baterias, que é o melhor sítio para a ter.
+
+#### Defeitos encontrados na tabela de massas do verify_concept.py
+- **`longarina_re` a 0,35 kg cada.** Uma ripa de 370×20×10 em pinho pesa
+  0,037 kg. É um ponto decimal, e as quatro longarinas inflacionam o total
+  em ~0,7 kg. O mesmo na `longarina_proa` (0,08 contra ~0,0045).
+- **Cascos a 2,2 kg** com densidade de contraplacado genérico. A lista de
+  compras diz okoumé. Por corrigir junto com as densidades reais
+  (okoumé 430, pinho 500, XPS 30 kg/m³).
+
+#### Problemas / limitações
+- **O blueprint não tem gerador no repositório.** Todos os outros artefactos
+  gerados deste projeto têm o script commitado — os procedimentos, o CAD, o
+  SVG de implantação. O blueprint é um PDF sem fonte. Enquanto assim for,
+  esta alteração vive só aqui no log e não no desenho que vai para a
+  bancada, que é exatamente o sítio onde ela é precisa. **Fica como
+  OPEN-016.**
+- A cota de 80 continua a assentar em estimativas. A pesagem mantém-se como
+  passo 1 e pode ainda mexer nisto.
+- Parte superior do poço (acima dos 50 mm forrados) fica em XPS sem forro,
+  com a bateria a passar por lá a cada saída. Por confirmar se é mesmo assim
+  no desenho ou se é leitura minha do corte.
+
+#### Outra decisão que fica em aberto, e é da mesma urgência
+**O motor não tem acesso nenhum.** Escotilhas em X 248,5–433,5 (baterias),
+cobertura do ESC em X 690–785, motor em X 630–700 — e a travessa T3 assenta
+mesmo por cima, em X 640,5–685,5. Só os últimos 10 mm do motor caem sob a
+abertura do ESC. É um motor arrefecido a água, com camisa e duas ligações de
+tubo. E a longarina de convés de ré corre em X 430–800, Y ±107–127, portanto
+uma escotilha sobre o motor atravessa-a a meio do vão — é decisão de
+estrutura, não de montagem, e tem de estar no desenho antes do corte.
+
+#### Lições aprendidas
+- **Uma margem de projeto vale o que valer o número de que foi subtraída.**
+  Os «6 mm acima da linha de água» eram uma margem perfeitamente razoável
+  sobre uma WL que ninguém mediu. A margem não estava errada; o que estava
+  por baixo dela é que não tinha chão.
+- **Uma regra de segurança pode remover uma proteção acidental.** O respiro
+  obrigatório dos LiPos elimina o efeito de bolha de ar que limitaria a
+  entrada de água num alojamento furado. As duas regras estão certas; o que
+  não existia era a leitura conjunta delas.
+- **O documento mais importante da construção é o único sem fonte.** Não se
+  deu por isso enquanto não foi preciso alterá-lo — que é sempre quando se
+  dá.
+
+#### Próximo passo
+- **Pesar**, e é o passo 1: o que já existe em componentes, e um bocado de
+  okoumé de 3 mm de área conhecida para tirar kg/m². Com isso a WL deixa de
+  ser palpite.
+- Decidir a escotilha de acesso ao motor antes de levar os desenhos.
+- Sensor de água na sentina de cada casco, como **OPEN-015**: o circuito de
+  arrefecimento mete água sob pressão dentro do casco e nada a deteta.
+- Ensaio dos ESCs e motores **desacoplados do jato** — a seco, com camisa de
+  arrefecimento vazia, só impulsos curtos a baixo regime. Confirmar sentido
+  de rotação antes de acoplar.
