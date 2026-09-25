@@ -14,9 +14,10 @@ SAILSAFE is a personal engineering project focused on building an autonomous sur
 > **On authorship.** The system design, the safety decisions, the hardware and the bench
 > work are mine. The code is written with AI assistance and held to the same standard as
 > everything else here: a regression suite that runs without hardware, and figures that
-> come from measurements on the bench rather than from datasheets. The engineering log
-> records the decisions and their reasoning — including the times a generated tool was
-> wrong and the bench proved it.
+> come from measurements on the bench rather than from datasheets. The engineering log and
+> the commit messages are also written with AI assistance, from my decisions and
+> measurements. The log records those decisions and their reasoning — including the times
+> a generated tool was wrong and the bench proved it.
 
 ## Current Phase
 Phase 1 — software MVP validated in simulation, GPS integrated and validated on hardware. Propulsion on the bench next; mechanical build held until the structure is weighed (blueprint v6.1, CAD v6.4). **Where things stand and what comes next: see [Next steps](#next-steps) below and the latest entries of `Engineering_log.md`.**

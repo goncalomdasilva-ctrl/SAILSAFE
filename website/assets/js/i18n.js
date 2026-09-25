@@ -261,8 +261,8 @@ export const T = {
   'f.school':   ['Engenharia Eletrotécnica e de Computadores · Instituto Superior Técnico', 'Electrical and Computer Engineering · Instituto Superior Técnico'],
   'f.docs':     ['Arquitetura v1.13 · esquema elétrico v1.11 · modelo CAD v6.3', 'Architecture v1.13 · electrical schematic v1.11 · CAD model v6.3'],
   'f.authorship': [
-    'Desenho de sistema, hardware e ensaios de bancada do autor; código desenvolvido com assistência de IA e validado por testes automáticos e por medição em bancada. O log de engenharia regista as decisões e o seu porquê — incluindo as vezes em que uma ferramenta gerada estava errada e foi a bancada a prová-lo.',
-    'System design, hardware and bench work by the author; code developed with AI assistance and validated by automated tests and bench measurement. The engineering log records the decisions and their reasoning — including the times a generated tool was wrong and the bench proved it.'
+    'Desenho de sistema, hardware e ensaios de bancada do autor; código desenvolvido com assistência de IA e validado por testes automáticos e por medição em bancada. O log de engenharia e as mensagens de commit são também redigidos com assistência de IA, a partir das decisões e medições do autor. O log regista essas decisões e o seu porquê — incluindo as vezes em que uma ferramenta gerada estava errada e foi a bancada a prová-lo.',
+    'System design, hardware and bench work by the author; code developed with AI assistance and validated by automated tests and bench measurement. The engineering log and the commit messages are also written with AI assistance, from decisions and measurements made by the author. The log records those decisions and their reasoning — including the times a generated tool was wrong and the bench proved it.'
   ],
   'f.note': [
     'Os valores apresentados mantêm o estatuto que têm na documentação técnica do projeto. Nenhum número de desempenho é ainda uma medição em água.',
