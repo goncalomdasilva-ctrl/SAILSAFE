@@ -2608,3 +2608,27 @@ As baterias: 656 g contra 1100. Faltam só os servos dos bocais (gramas).
 - Em paralelo, quando der: sessão no Pi com `main.py --gps --sim`.
 - Bloqueados, sem trabalho possível: placa nova do BNO055; kill-switch
   remoto (orçamento).
+
+#### Correção (mesmo dia): o fusível de 30 A fica
+A recomendação de 5 A para a bancada partia de o rabicho do porta-fusíveis
+ser 18–20 AWG, deduzido de "parece fino" sem confirmar o calibre. **É
+14 AWG**, que aguenta ~30 A: o fusível de 30 A está bem dimensionado para
+ele e o argumento "o fio derrete primeiro" não se aplica. Parece fino por
+comparação com os cabos da bateria (10–12 AWG).
+
+- **Condições:** confirmar o calibre (impresso, ou condutor ~1,6 mm) e que é
+  **cobre, não CCA** — núcleo prateado ao raspar a ponta. Em CCA a
+  capacidade cai para ~60% e 30 A passa a ser demais.
+- **Os 5 A tinham um defeito próprio:** o pico de carga dos condensadores de
+  entrada do ESC ao meter a loop key pode desgastar ou rebentar um fusível
+  pequeno e rápido sem avaria nenhuma. E as falhas típicas de bancada
+  (polaridade trocada, curto numa soldadura) são quase curtos francos, que
+  os 30 A apanham.
+- **O que protege o ESC na primeira ligação é medir a polaridade com o
+  multímetro antes da loop key.** Polaridade invertida mata-o antes de
+  qualquer fusível abrir.
+- Instalação final: 14 AWG a 30 A não tem margem para corrente sustentada.
+  Decide-se depois de medir a corrente a fundo.
+
+Lição: perguntar o calibre em vez de o deduzir de uma impressão. Um
+"parece fino" não é uma medição.

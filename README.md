@@ -65,8 +65,9 @@ Phase 1 — software MVP validated in simulation, GPS integrated and validated o
 ## Next steps
 *Updated 2026-09-25. The reasoning behind each item is in `Engineering_log.md`.*
 
-1. **Bench test of ESCs and motors, uncoupled from the jets.** 5 A fuse (not 30 A — the
-   fuse holder's thin pigtail would melt first), 2–3 s pulses at 10–15%. Check rotation
+1. **Bench test of ESCs and motors, uncoupled from the jets.** 30 A fuse, provided the
+   holder's pigtail really is 14 AWG copper (not CCA); check polarity with a meter before
+   the loop key goes in. 2–3 s pulses at 10–15%. Check rotation
    direction *before* coupling and mark the phase order. Measure the current. First run of
    the latch, failsafe, ceiling and confirmed STOP against real actuators.
 2. **Thrust test in a tub**, jet submerged so the cooling loop primes, pulling on a spring
