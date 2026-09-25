@@ -19,7 +19,7 @@ SAILSAFE is a personal engineering project focused on building an autonomous sur
 > wrong and the bench proved it.
 
 ## Current Phase
-Phase 1 — software MVP validated in simulation; mechanical build in preparation (architecture v6.1).
+Phase 1 — software MVP validated in simulation, GPS integrated and validated on hardware. Propulsion on the bench next; mechanical build held until the structure is weighed (blueprint v6.1, CAD v6.4). **Where things stand and what comes next: see [Next steps](#next-steps) below and the latest entries of `Engineering_log.md`.**
 
 ## Current Status
 - Raspberry Pi ↔ ESP32 command chain validated on the bench (USB serial, text protocol `L: x R: y`)
@@ -47,7 +47,9 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
   the bus, but the dividers are not built yet — the PGA correction and the divider
   ratios stay theory until they are
 - Mechanical architecture v6.1: batteries housed inside the hulls, IP66 electronics box at deck level
-- Motors and ESCs pending (blocked on physical kill-switch chain — safety rule)
+- Motors and ESCs in hand (each motor and waterjet is a single 107 g unit); loop key and fuse soldered. Bench test with the units **uncoupled** is next. Running them on water stays gated by the remote kill switch
+- **Components weighed (25 Sep):** ~2.0 kg for everything except the structure, against 3.2 kg assumed by the CAD. The structure is still unweighed, so the total sits between 5.3 and 10.4 kg (waterline 33–65 mm). Battery bay floors raised from z=45 to **z=80**, which clears the whole range. Lighter propulsion may move the CG forward of the LCB and flip the trim to the bow, which would move the battery bays aft — to be decided after weighing the structure
+- **30% throttle ceiling is per phase, not a constant:** bench 30%; tethered on water, higher; free running only with the remote kill switch. 30% throttle is roughly 30% of top speed (~0.5 m/s by a rough estimate), which a 1-knot current cancels
 - GPS wiring closed (OPEN-005): NMEA on the Pi's GPIO UART, `/dev/serial0` at 9600
 - Return point implemented (closes OPEN-006 on the point): the position is recorded
   once at ARM, averaged over validated fixes in a sliding window, and never rewritten.
@@ -58,6 +60,28 @@ Phase 1 — software MVP validated in simulation; mechanical build in preparatio
   be 2.5 s old; at the 3 m/s design speed that is 7.5 m of uncertainty, against a 4 m
   arrival radius. No staleness budget fixes this — raising the module to 5 Hz
   (`UBX-CFG-RATE`) is the condition for tightening the radius
+
+## Next steps
+*Updated 2026-09-25. The reasoning behind each item is in `Engineering_log.md`.*
+
+1. **Bench test of ESCs and motors, uncoupled from the jets.** 5 A fuse (not 30 A — the
+   fuse holder's thin pigtail would melt first), 2–3 s pulses at 10–15%. Check rotation
+   direction *before* coupling and mark the phase order. Measure the current. First run of
+   the latch, failsafe, ceiling and confirmed STOP against real actuators.
+2. **Thrust test in a tub**, jet submerged so the cooling loop primes, pulling on a spring
+   scale. Replaces the speed estimate with a number.
+3. **Weigh the structure** — a 3 mm okoumé offcut of known area, and the XPS. Then correct
+   the mass table in `verify_concept.py` with measured values, recompute the CG, and
+   decide the battery bay X position, confirm z=80, and the motor access hatch.
+4. **Find the blueprint generator (OPEN-016)** and apply the changes to the drawing. Only
+   then do the drawings go to the carpenter.
+
+In parallel: run `main.py --gps --sim` on the Pi with the real receiver.
+Blocked, nothing to do: replacement BNO055 board; remote kill switch (budget).
+
+Open items: OPEN-014 (dead reckoning as observer, never actuator), OPEN-015 (bilge water
+sensor per hull — the cooling loop puts pressurised water inside the hull), OPEN-016
+(blueprint has no generator in the repo).
 
 ## Safety Design
 - Boot always in a safe (DISARMED) state; STOP has absolute priority

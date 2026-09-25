@@ -2509,3 +2509,102 @@ estrutura, não de montagem, e tem de estar no desenho antes do corte.
 - Ensaio dos ESCs e motores **desacoplados do jato** — a seco, com camisa de
   arrefecimento vazia, só impulsos curtos a baixo regime. Confirmar sentido
   de rotação antes de acoplar.
+
+### 2026-09-25 (pesagem dos componentes, propulsão e ponto de situação)
+
+Primeira pesagem real. Os componentes pesaram-se; a estrutura ainda não —
+falta o bocado de okoumé de área conhecida. Pelo caminho: loop key e
+fusível soldados para o primeiro ensaio de ESCs e motores.
+
+#### Pesagens (balança, por unidade)
+| item | g | nota |
+|---|---|---|
+| motor + waterjet (conjunto) | 107 | **o motor e o jato são uma só peça** |
+| ESC | 45 | |
+| fusível do ESC | 19 | |
+| bateria de propulsão 3S 5000 | 328 | só existe uma; a segunda compra-se com o casco |
+| bus bar | 82 | |
+| cabos + conectores | 160 | |
+| eletrónica | 450 | |
+| caixa IP66 | 306 | |
+
+Contando dois de tudo o que é por casco: **não-estrutura ≈ 2,0 kg**. O CAD
+assumia 3,20 kg para os mesmos itens. Tudo veio mais leve — e a propulsão
+muito mais: o CAD tinha 0,69 kg por lado (motor 0,32 + jato 0,35 + veio
+0,02), o real são **0,107 kg**, 6,4× menos. A caixa IP66: 306 g contra 900.
+As baterias: 656 g contra 1100. Faltam só os servos dos bocais (gramas).
+
+#### O que isto faz às contas
+- **Massa total entre 5,3 e 10,4 kg**, conforme a estrutura seja a minha
+  estimativa com okoumé (3,3 kg) ou a da tabela do CAD (8,4 kg). WL entre
+  **33 e 65 mm**. Os 5 kg de incerteza estão agora **todos na estrutura**.
+- **O fundo dos alojamentos a z=80 aguenta as duas pontas** (47 mm de margem
+  no caso leve, 15 mm no pesado). Decisão de 09-20 validada com pesos reais.
+- **O caimento pode trocar de sinal.** Tirar ~1,17 kg de propulsão de uma
+  zona centrada em X≈720 puxa o x_G de 469 para **~441 mm**, à frente do LCB
+  (456). Caimento à proa levanta a popa e aproxima da superfície as
+  admissões dos jatos (z 21–28) — é como se ventila um jato. A correção
+  provável é **recuar os alojamentos das baterias** (hoje X 263,5–418,5), e
+  a posição deles é cortada nos cascos. Conta provisória: assenta na massa
+  de estrutura, que falta.
+
+#### Propulsão: velocidade e o teto de 30%
+- Estimativa grosseira, **por medir**: 1,5–2 m/s a fundo. É a ordem normal
+  para um catamarã de deslocamento de 80 cm (velocidade de casco ~1,1 m/s).
+  O `SimulatedBoat` assume 3 m/s a 100%, provavelmente otimista.
+- Impulso ∝ ω² e arrasto ∝ v², portanto a velocidade acompanha a
+  aceleração quase linearmente: **30% ≈ 30% da velocidade máxima ≈
+  0,5 m/s**. Anda — mas uma corrente de 1 nó ou vento moderado anulam-no, e
+  um barco que não faz caminho contra a corrente não regressa.
+- **Decisão: o teto passa a ser por fase, não um número fixo.** Bancada 30%
+  (como está); água presa por cabo, mais alto, o suficiente para vencer a
+  corrente; navegação livre, só com kill-switch remoto. Continua no
+  firmware do ESP32, para o Pi nunca o poder ultrapassar — subi-lo é um
+  reflash deliberado.
+- Tensão: 3S = 11,1 V nominal, **12,6 V cheia**, ~10 V no fim. É o 12,6 que
+  conta para dimensionar. Os ESCs especificam-se em células (confirmar que a
+  etiqueta cobre 3S).
+
+#### Fusível: dimensiona-se pelo fio, não pela carga
+- O porta-fusíveis tem **rabicho fino**. Se for 18–20 AWG (11–16 A), um
+  fusível de 30 A deixa o fio derreter antes de abrir — protege a coisa
+  errada.
+- A 30% com o motor desacoplado a corrente anda por **~1 A**. 30 A são
+  trinta vezes isso; só abriria num curto franco.
+- **Bancada: fusível de 5 A.** Abre logo numa fase trocada ou numa
+  soldadura má — que é para isso que serve na primeira energização.
+- **Instalação final: 30 A**, com **12 AWG** e porta-fusíveis de terminais
+  aparafusados (MIDI/AMI ou ANL), não de lâmina com rabichos. Coerente com o
+  ACS758-050U (0–50 A por casco).
+- Fusível e loop key em série no positivo, fusível o mais perto possível da
+  bateria.
+
+#### Lições aprendidas
+- **A tabela de massas estava errada em quase todas as linhas, e sempre
+  para o mesmo lado.** Estimativas "com folga" somam folga em cima de folga:
+  cada linha pessimista parece prudente, e o total fica a dizer que as
+  baterias vão debaixo de água. Folga põe-se uma vez, no fim, não em cada
+  parcela.
+- **O componente mais leve mudou o problema mais pesado.** 580 g a menos à
+  popa não mexem na flutuação de forma relevante, mas podem inverter o
+  caimento — e o caimento decide onde se corta a madeira.
+
+#### Próximo passo (por esta ordem)
+1. **Ensaio de ESCs e motores desacoplados**, fusível de 5 A, impulsos de
+   2–3 s a 10–15%. Confirmar o sentido de rotação **antes** de acoplar e
+   marcar a ordem das fases. Medir a corrente (wattmeter de RC ou
+   multímetro na escala de 10 A). Primeira vez que trava, failsafe, teto e
+   STOP confirmado correm contra atuadores reais.
+2. **Ensaio de impulso num alguidar**, jato submerso (para o arrefecimento
+   ferrar), preso a uma balança de mola. Dá o impulso real e substitui a
+   estimativa de velocidade por um número.
+3. **Pesar a estrutura:** bocado de okoumé de 3 mm de área conhecida
+   (→ kg/m²) e o XPS se já existir. Com isso: corrigir a tabela do
+   `verify_concept.py` com massas medidas, recalcular x_G, e decidir
+   **(a)** a posição X dos alojamentos, **(b)** confirmar z=80, **(c)** a
+   escotilha de acesso ao motor.
+4. **Encontrar o gerador do blueprint** (OPEN-016) e aplicar as alterações
+   no desenho. Só então os desenhos vão para o marceneiro.
+- Em paralelo, quando der: sessão no Pi com `main.py --gps --sim`.
+- Bloqueados, sem trabalho possível: placa nova do BNO055; kill-switch
+  remoto (orçamento).
