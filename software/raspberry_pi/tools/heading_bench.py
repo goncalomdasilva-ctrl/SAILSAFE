@@ -15,6 +15,16 @@ Uso:
     python3 -m tools.heading_bench                 # BNO055 real
     python3 -m tools.heading_bench --fake          # sem hardware, so ver o ecra
     python3 -m tools.heading_bench --alvo 90 --declinacao -2.1 --offset 0
+    python3 -m tools.heading_bench --guardar-cal    # grava ao chegar a 3333
+    python3 -m tools.heading_bench --carregar-cal   # parte da gravada
+
+Calibracao gravada: o BNO055 perde-a sempre que perde alimentacao.
+--guardar-cal grava os offsets em config/bno055_calibration.json na
+primeira vez que os quatro contadores chegam a 3; --carregar-cal escreve-os
+no sensor ao arrancar. Carregar NAO dispensa a calibracao: o sensor so volta
+a reportar sys e mag a 3 depois de algum movimento, e o rumo so aparece
+nessa altura. Encurta-a, de um oito completo para um movimento curto.
+Offsets gravados com a placa na mao nao valem para o barco montado.
 
 Procedimento de calibracao do BNO055 (modo NDOF):
   gyro  -> pousar parado alguns segundos
@@ -29,15 +39,18 @@ calibracao feita com a placa na mao nao vale para o barco montado.
 
 import argparse
 import math
+import os
 import sys
 import time
 
 from control.heading import HeadingController, heading_error
 from control.mixer import mix
-from control.real_heading import HeadingUnavailable, RealHeading
+from control.real_heading import MAX_RATE_DPS, HeadingUnavailable, RealHeading
 
 THROTTLE_MOSTRADO = 20      # so para ilustrar o mixer; nao e enviado
 CAP = 30                    # o mesmo teto que o ESP32 impoe
+CAL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "config", "bno055_calibration.json")
 
 
 class FakeBNO055:
@@ -49,6 +62,12 @@ class FakeBNO055:
 
     def __init__(self):
         self.t0 = time.monotonic()
+        # offsets falsos, so para --guardar-cal/--carregar-cal correrem
+        self.offsets_accelerometer = (0, 0, 0)
+        self.offsets_gyroscope = (0, 0, 0)
+        self.offsets_magnetometer = (0, 0, 0)
+        self.radius_accelerometer = 1000
+        self.radius_magnetometer = 480
 
     @property
     def _dt(self):
@@ -89,17 +108,26 @@ def main():
     p.add_argument("--hz", type=float, default=5.0, help="taxa de leitura")
     p.add_argument("--fake", action="store_true",
                    help="usar um sensor falso, sem hardware")
+    p.add_argument("--guardar-cal", action="store_true",
+                   help=f"gravar a calibracao ao chegar a 3333 ({CAL_PATH})")
+    p.add_argument("--carregar-cal", action="store_true",
+                   help="carregar no sensor a calibracao gravada, ao arrancar")
+    p.add_argument("--taxa-max", type=float, default=MAX_RATE_DPS,
+                   help="taxa de rotacao maxima credivel, graus/s "
+                        f"(omissao {MAX_RATE_DPS:.0f})")
     args = p.parse_args()
 
     if args.fake:
         print("[BANCADA] Sensor FALSO. Nada disto sao medicoes reais.")
         heading_src = RealHeading(FakeBNO055(), mount_offset_deg=args.offset,
-                                  declination_deg=args.declinacao)
+                                  declination_deg=args.declinacao,
+                                  max_rate_dps=args.taxa_max)
     else:
         try:
             from control.real_heading import create_bno055
             heading_src = create_bno055(mount_offset_deg=args.offset,
-                                        declination_deg=args.declinacao)
+                                        declination_deg=args.declinacao,
+                                        max_rate_dps=args.taxa_max)
         except ImportError as e:
             print(f"[ERRO] Falta a biblioteca do BNO055: {e}")
             print("       pip install adafruit-circuitpython-bno055")
@@ -115,6 +143,21 @@ def main():
               "verdadeiro. Passar --declinacao antes de comparar com "
               "bearings de navegacao.")
 
+    if args.carregar_cal:
+        try:
+            data = heading_src.load_calibration(CAL_PATH)
+        except FileNotFoundError:
+            print(f"[ERRO] Nao ha calibracao gravada em {CAL_PATH}.")
+            print("       Calibrar primeiro com --guardar-cal.")
+            return 1
+        except (OSError, ValueError) as e:
+            print(f"[ERRO] Calibracao gravada nao carregou: {e}")
+            print("       O sensor ficou como estava. Apagar o ficheiro e "
+                  "recalibrar com --guardar-cal.")
+            return 1
+        print(f"[CAL] Carregada a calibracao de {data.get('saved_at', '?')}. "
+              "Mexer um pouco a placa ate sys e mag chegarem a 3.")
+
     ctrl = HeadingController(kp=args.kp, max_steer=100.0)
     ctrl.set_target(args.alvo)
     periodo = 1.0 / args.hz
@@ -124,9 +167,22 @@ def main():
     print("[BANCADA] Sem serie e sem motores. Rodar o sensor a mao. Ctrl-C para sair.")
     print()
 
+    gravada = False
+    rejeitadas = 0
     try:
         while True:
             cal = heading_src.calibration()
+            if args.guardar_cal and not gravada and tuple(cal) == (3, 3, 3, 3):
+                try:
+                    heading_src.save_calibration(CAL_PATH)
+                    gravada = True
+                    print(f"[CAL] Calibracao 3333 gravada em {CAL_PATH}",
+                          flush=True)
+                except (OSError, ValueError) as e:
+                    # 3333 lido aqui pode ja nao ser 3333 dentro do save;
+                    # tenta-se outra vez na volta seguinte
+                    print(f"[CAL] Nao gravou ({e}); volta a tentar.",
+                          flush=True)
             try:
                 heading = heading_src.read()
             except HeadingUnavailable as e:
@@ -136,6 +192,11 @@ def main():
                 time.sleep(periodo)
                 continue
 
+            aviso = ""
+            if heading_src.rejected_total > rejeitadas:
+                rejeitadas = heading_src.rejected_total
+                aviso = f"  [salto rejeitado, total {rejeitadas}]"
+
             err = heading_error(args.alvo, heading)
             steer = ctrl.update(heading)
             left, right = mix(THROTTLE_MOSTRADO, steer, 0, CAP)
@@ -144,10 +205,12 @@ def main():
             print(f"  cal={cal.sys}{cal.gyro}{cal.accel}{cal.mag}  "
                   f"rumo={bussola:6.1f}  erro={err:+7.1f}  "
                   f"steer={steer:+6.1f} [{barra(steer)}]  "
-                  f"L={left:4.1f} R={right:4.1f} (nao enviado)", flush=True)
+                  f"L={left:4.1f} R={right:4.1f} (nao enviado){aviso}",
+                  flush=True)
             time.sleep(periodo)
     except KeyboardInterrupt:
         print("\n[BANCADA] Terminado. Nada foi enviado ao ESP32.")
+        print(f"[BANCADA] Saltos rejeitados nesta sessao: {rejeitadas}")
     return 0
 
 

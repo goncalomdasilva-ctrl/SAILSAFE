@@ -41,9 +41,13 @@ Phase 1 — software MVP validated in simulation, GPS integrated and validated o
   leads to a safe state after a short tolerance; the return point is recorded at
   ARM. Rehearsed end to end against fake serial hardware (`tools/system_bench.py`),
   never yet against the real receiver
-- **Heading blocked**: the BNO055 module is faulty (internal rail at 2.7 V with 4.7 V
-  in, and ~0.4 mA of leakage on SDA, which poisoned the whole I2C bus). Replacement
-  ordered; see `Engineering_log.md` for the diagnosis
+- **First real heading** (10 Nov): replacement BNO055 (Devantech board, I2C link
+  closed) stable at 0x28 alongside the ADS1015 at 0x48; full NDOF calibration (3333)
+  reached by hand, heading steady to ~1° at rest and tracking rotation smoothly
+  through 0°. ~590 readings with zero I2C failures once the jumpers were replaced
+  (the earlier dropouts were the wires). One isolated ~110° single-sample glitch
+  observed, now quarantined in `RealHeading`. Calibration offsets can be saved and
+  restored. Heading not yet in `main.py`, and not yet calibrated on the boat
 - Power sense (ADS1015) written and covered by tests, and the chip answers reliably on
   the bus, but the dividers are not built yet — the PGA correction and the divider
   ratios stay theory until they are
@@ -65,11 +69,16 @@ Phase 1 — software MVP validated in simulation, GPS integrated and validated o
 ## Next steps
 *Updated 2026-09-25. The reasoning behind each item is in `Engineering_log.md`.*
 
-1. **Bench test of ESCs and motors, uncoupled from the jets.** 30 A fuse, provided the
-   holder's pigtail really is 14 AWG copper (not CCA); check polarity with a meter before
-   the loop key goes in. 2–3 s pulses at 10–15%. Check rotation
-   direction *before* coupling and mark the phase order. Measure the current. First run of
-   the latch, failsafe, ceiling and confirmed STOP against real actuators.
+1. **Bench test of ESCs and motors.** Motor and jet are a single unit, so they cannot be
+   uncoupled: dry, only ~1 s pulses at 10% (the ESP32 failsafe ends each one by itself);
+   anything longer with the jet in a tub. Commands by hand from the Arduino Serial Monitor
+   (115200, *Newline*), no new code needed. ESC signal + ground only — **leave the ESC's
+   red BEC wire unconnected**. ESP32 powered and outputting 1000 µs *before* the loop key
+   goes in. 30 A fuse, provided the holder's pigtail really is 14 AWG copper (not CCA);
+   check polarity with a meter first. Check rotation direction and mark the phase order.
+   First run of the latch, failsafe, ceiling and STOP against real actuators. Measuring
+   current needs longer pulses with a heartbeat — a `tools/motor_bench.py` that does not
+   exist yet.
 2. **Thrust test in a tub**, jet submerged so the cooling loop primes, pulling on a spring
    scale. Replaces the speed estimate with a number.
 3. **Weigh the structure** — a 3 mm okoumé offcut of known area, and the XPS. Then correct
@@ -79,7 +88,8 @@ Phase 1 — software MVP validated in simulation, GPS integrated and validated o
    then do the drawings go to the carpenter.
 
 In parallel: run `main.py --gps --sim` on the Pi with the real receiver.
-Blocked, nothing to do: replacement BNO055 board; remote kill switch (budget).
+Heading is unblocked (10 Nov): calibrate on the mounted tray, measure the mounting
+offset and declination. Blocked, nothing to do: remote kill switch (budget).
 
 Open items: OPEN-014 (dead reckoning as observer, never actuator), OPEN-015 (bilge water
 sensor per hull — the cooling loop puts pressurised water inside the hull), OPEN-016
@@ -155,9 +165,18 @@ for f in /proc/device-tree/soc/i2c@*/clock-frequency; do
 done                   # i2c@7e804000 must read 00002710 (10000)
 ```
 
-Both I2C devices need their address pin tied by a wire — `ADD` to GND on the BNO055
-(0x28), `ADDR` to GND on the ADS1015 (0x48). A floating address pin does not fail: it
-gives an address that changes, and a device that appears and disappears.
+The ADS1015 needs its address pin tied by a wire — `ADDR` to GND (0x48). A floating
+address pin does not fail: it gives an address that changes, and a device that appears
+and disappears.
+
+The BNO055 is a Devantech (robot-electronics.co.uk) board. It ships in **serial** mode;
+the I2C link (the split round pad next to the "S.18" marking) must be bridged with
+solder, after which it answers at a fixed 0x28. Without the link it does not show up on
+`i2cdetect` at all, which looks exactly like a dead board. Pins in I2C mode:
+`Vcc` → 3.3 V (not 5 V: the level translator follows Vcc, and 5 V would put 5 V on the
+Pi's SDA/SCL), `Rx` → SCL (pin 5), `Tx` → SDA (pin 3), `0v` → GND. Female–female jumpers
+straight onto the board's header: breadboard contacts dropped the bus while it was
+being turned for calibration.
 
 Dependencies on the Pi:
 
@@ -194,7 +213,7 @@ python3 software/raspberry_pi/main.py --sim         # NAV in simulation, no prop
 python3 software/raspberry_pi/main.py --sim-motores # NAV in simulation, motors DO run
 ```
 
-186 Python tests and 182 C++ checks, none of which need hardware.
+197 Python tests and 182 C++ checks, none of which need hardware.
 
 There is also an end-to-end rehearsal of the whole process against fake serial
 hardware — two pseudo-terminals, one feeding NMEA as the NEO-8M, the other
@@ -221,7 +240,16 @@ python3 -m tools.gps_bench --fake         # NEO-8M: fix quality, not just "has a
 python3 -m tools.gps_bench --cru          # shows every frame, and whether it parsed
 ```
 
-Drop `--fake` for the real sensor. `sense_bench --calibrar a2 12.60` stores the scale
+Drop `--fake` for the real sensor.
+
+The BNO055 forgets its calibration whenever it loses power.
+`heading_bench --guardar-cal` writes the offsets to `config/bno055_calibration.json`
+the first time all four counters reach 3; `--carregar-cal` loads them at start-up. This
+shortens calibration, it does not remove it: the sensor only reports sys and mag at 3
+again after some movement, and no heading is given before that. The file is per board
+and per mounting, so it is git-ignored and lives only on the Pi.
+
+`sense_bench --calibrar a2 12.60` stores the scale
 factor for one channel against a multimeter reading; without that file the readings are
 produced but marked uncalibrated, and the return trigger refuses to act on them.
 

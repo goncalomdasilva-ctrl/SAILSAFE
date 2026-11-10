@@ -175,6 +175,161 @@ def test_is_calibrated():
     assert not RealHeading(FakeDriver(cal=(3, 3, 3, 2))).is_calibrated()
 
 
+# -- quarentena de saltos impossiveis ------------------------------------
+# Caso real, bancada de 2026-11-10 a 5 Hz: 23 -> 134 -> 25 graus.
+
+def _seq(h, drv, clock, pares):
+    """Corre uma sequencia [(t, yaw), ...] e devolve as leituras."""
+    out = []
+    for t, yaw in pares:
+        clock.t = t
+        drv.yaw = yaw
+        out.append(h.read())
+    return out
+
+
+def test_salto_isolado_e_rejeitado():
+    clock = FakeClock()
+    drv = FakeDriver()
+    h = RealHeading(drv, clock=clock)
+    r = _seq(h, drv, clock, [(0.0, 23.0), (0.2, 134.0), (0.4, 25.0)])
+    assert abs(r[1] - 23.0) < 1e-9, f"o salto passou: {r}"
+    assert abs(r[2] - 25.0) < 1e-9, r
+    assert h.rejected_total == 1
+
+
+def test_rotacao_rapida_real_passa_com_uma_amostra_de_atraso():
+    # rodar a mao: 74 -> 327 -> 320, duas leituras seguidas coerentes
+    clock = FakeClock()
+    drv = FakeDriver()
+    h = RealHeading(drv, clock=clock)
+    r = _seq(h, drv, clock, [(0.0, 74.0), (0.2, 327.0), (0.4, 320.0)])
+    assert abs(r[1] - 74.0) < 1e-9, r          # primeira fica de quarentena
+    assert abs(r[2] - (320.0 - 360.0)) < 1e-9, r   # segunda confirma
+
+
+def test_rotacao_lenta_nao_e_tocada():
+    clock = FakeClock()
+    drv = FakeDriver()
+    h = RealHeading(drv, clock=clock)
+    pares = [(0.2 * i, 10.0 * i) for i in range(20)]   # 50 graus/s
+    _seq(h, drv, clock, pares)
+    assert h.rejected_total == 0
+
+
+def test_salto_atraves_do_zero_nao_e_salto():
+    # 358 -> 3 sao 5 graus, nao 355
+    clock = FakeClock()
+    drv = FakeDriver()
+    h = RealHeading(drv, clock=clock)
+    r = _seq(h, drv, clock, [(0.0, 358.0), (0.2, 3.0)])
+    assert abs(r[1] - 3.0) < 1e-9, r
+    assert h.rejected_total == 0
+
+
+def test_sem_referencia_recente_aceita():
+    # depois de uma falha longa o barco pode ter rodado de verdade:
+    # a primeira leitura nova nao pode ficar presa contra a antiga
+    clock = FakeClock()
+    drv = FakeDriver()
+    h = RealHeading(drv, max_stale_s=0.5, clock=clock)
+    r = _seq(h, drv, clock, [(0.0, 0.0), (3.0, 150.0)])
+    assert abs(r[1] - 150.0) < 1e-9, r
+
+
+def test_saltos_seguidos_incoerentes_nunca_entram():
+    clock = FakeClock()
+    drv = FakeDriver()
+    h = RealHeading(drv, clock=clock)
+    r = _seq(h, drv, clock, [(0.0, 0.0), (0.1, 120.0), (0.2, -120.0),
+                             (0.3, 60.0)])
+    assert all(abs(x) < 1e-9 for x in r[1:]), r
+
+
+def test_quarentena_nao_prolonga_a_ultima_boa_para_la_do_stale():
+    # se so chegam saltos, a ultima boa envelhece e deixa de servir de
+    # referencia: a leitura seguinte e aceite, nao fica presa para sempre
+    clock = FakeClock()
+    drv = FakeDriver()
+    h = RealHeading(drv, max_stale_s=0.5, clock=clock)
+    r = _seq(h, drv, clock, [(0.0, 0.0), (0.2, 120.0), (0.4, -120.0),
+                             (0.6, 90.0)])
+    assert abs(r[3] - 90.0) < 1e-9, r
+
+
+# -- persistencia da calibracao ------------------------------------------
+
+class CalDriver(FakeDriver):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.offsets_accelerometer = (-20, 5, 12)
+        self.offsets_gyroscope = (1, -2, 0)
+        self.offsets_magnetometer = (150, -300, 42)
+        self.radius_accelerometer = 1000
+        self.radius_magnetometer = 700
+
+
+def test_calibracao_ida_e_volta(tmp=None):
+    import tempfile
+    path = os.path.join(tempfile.mkdtemp(), "cal.json")
+    origem = CalDriver(cal=(3, 3, 3, 3))
+    RealHeading(origem).save_calibration(path)
+    destino = CalDriver()
+    destino.offsets_magnetometer = (0, 0, 0)
+    destino.radius_magnetometer = 0
+    RealHeading(destino).load_calibration(path)
+    assert destino.offsets_magnetometer == (150, -300, 42)
+    assert destino.offsets_accelerometer == (-20, 5, 12)
+    assert destino.radius_magnetometer == 700
+    assert isinstance(destino.offsets_gyroscope, tuple)
+
+
+def test_nao_grava_calibracao_incompleta():
+    import tempfile
+    path = os.path.join(tempfile.mkdtemp(), "cal.json")
+    try:
+        RealHeading(CalDriver(cal=(3, 3, 2, 3))).save_calibration(path)
+    except ValueError:
+        assert not os.path.exists(path)
+        return
+    raise AssertionError("gravou com accel a 2")
+
+
+def test_ficheiro_mau_nao_toca_no_sensor():
+    import json
+    import tempfile
+    path = os.path.join(tempfile.mkdtemp(), "cal.json")
+    with open(path, "w") as f:
+        json.dump({"offsets_accelerometer": [1, 2, 3],
+                   "offsets_gyroscope": [1, 2, 3],
+                   "offsets_magnetometer": [1, 2, 99999],   # fora de int16
+                   "radius_accelerometer": 1000,
+                   "radius_magnetometer": 700}, f)
+    drv = CalDriver()
+    antes = drv.offsets_accelerometer
+    try:
+        RealHeading(drv).load_calibration(path)
+    except ValueError:
+        assert drv.offsets_accelerometer == antes, "escreveu antes de validar"
+        return
+    raise AssertionError("aceitou offset fora de int16")
+
+
+def test_carregar_calibracao_nao_dispensa_o_gate():
+    # offsets carregados nao fazem o read() aceitar sem sys/mag a 3
+    import tempfile
+    path = os.path.join(tempfile.mkdtemp(), "cal.json")
+    RealHeading(CalDriver(cal=(3, 3, 3, 3))).save_calibration(path)
+    drv = CalDriver(cal=(0, 0, 0, 0))
+    h = RealHeading(drv)
+    h.load_calibration(path)
+    try:
+        h.read()
+    except HeadingUnavailable:
+        return
+    raise AssertionError("deu rumo sem calibracao reportada")
+
+
 if __name__ == "__main__":
     testes = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     falhas = 0

@@ -2632,3 +2632,109 @@ comparação com os cabos da bateria (10–12 AWG).
 
 Lição: perguntar o calibre em vez de o deduzir de uma impressão. Um
 "parece fino" não é uma medição.
+
+#### Nota (mesmo dia): o motor não se desacopla do jato
+São uma só peça, portanto o "ensaio desacoplado" planeado não existe. A
+seco, só impulsos de ~1 s a 10% para ver o sentido de rotação — e o próprio
+failsafe do ESP32 limita cada impulso: um comando à mão dá no máximo 1 s de
+rotação e depois trava. Tudo o que for mais longo, com o jato num alguidar.
+Para medir corrente são precisos impulsos longos com heartbeat, e não há
+ferramenta para isso: fica `tools/motor_bench.py` por escrever.
+
+### 2026-11-10 (BNO055 novo: primeiro rumo real)
+
+Regresso ao projeto depois de seis semanas parado. A placa de substituição
+do BNO055 chegou e foi soldada; é a da **Devantech** (robot-electronics.co.uk).
+
+#### Trabalho realizado
+- **Link de I2C fechado.** A placa vem em série (115 200 8N1) e só tem os
+  pinos marcados `Vcc / Rx / Tx / 0v`. O link é a pastilha redonda partida ao
+  meio junto à marcação "S.18", no lado dos componentes. Fechada com uma gota
+  de estanho, continuidade verificada com a placa morta, resíduo de fluxo
+  limpo com álcool etílico a 96%.
+- **Ligação em I2C, em paralelo com o ADS1015:** `Vcc` → 3,3 V, `Rx` → SCL,
+  `Tx` → SDA, `0v` → GND. Vcc a 3,3 V e não a 5 V de propósito: o tradutor de
+  níveis da placa (FXMA2102) segue o Vcc do lado do conector, e com 5 V as
+  linhas iriam a 5 V no Pi. Sem pino de endereço nesta placa — fixo em 0x28.
+- **`i2cdetect -y 1`: 0x28 e 0x48 fixos**, várias vezes seguidas. O barramento
+  partilhado está são, ao contrário do que a placa avariada de setembro fazia.
+- **Primeiro rumo real do projeto.** Calibração NDOF completa (`cal=3333`)
+  feita à mão no `heading_bench`. Em repouso, estável a ~1° (troço de ~15
+  leituras seguidas em 272°); a rodar, acompanha sem saltos e atravessa os 0°
+  corretamente (357,9 → 3,8 → 353,8, com o erro a trocar de sinal pelo lado
+  curto). O controlador e o mixer reagem como previsto, com o teto de 30%.
+
+#### Problemas, por ordem de aparecimento
+- **Quedas do barramento ao mexer na placa.** Duas sessões acabaram em
+  `sem resposta do sensor` permanente, uma delas com reinício do sensor a
+  meio (a calibração voltou toda a zero, gyro incluído — o BNO055 só a perde
+  se perder alimentação). Sempre durante os movimentos de calibração, com a
+  placa numa breadboard pequena e jumpers maus.
+  **Fechado:** com jumpers fêmea–fêmea diretos ao conector da placa, ~590
+  leituras numa sessão, a mexer, **zero falhas de I2C**. O defeito era dos
+  cabos; a parte elétrica (pull-ups, 10 kHz) fica ilibada.
+- **Um salto isolado de ~110° numa amostra:** 23 → 134 → 25 graus a 5 Hz, com
+  calibração 3/3 e sem erro de I2C. Seriam ~550°/s. Causa por determinar
+  (leitura corrompida ou falha momentânea da fusão). No NAV seria um golpe de
+  leme de uma amostra.
+- **Gyro a 0 numa sessão inteira**, com o sys a oscilar por causa disso. O
+  gyro só calibra com a placa completamente parada alguns segundos; é o
+  primeiro passo, e foi saltado.
+
+#### Decisões técnicas
+- **Quarentena de leituras impossíveis no `RealHeading`.** Uma leitura que
+  implique rodar acima de `max_rate_dps` (180°/s por omissão) desde a última
+  boa não entra; devolve-se a última boa, que é o que a falha transitória já
+  fazia. É aceite se a leitura seguinte concordar com ela — duas leituras
+  coerentes entre si são uma rotação real e rápida, uma leitura que não
+  concorda com nada, nem antes nem depois, é o defeito. Custo: uma amostra de
+  atraso num salto real. Sem referência recente (última boa mais velha do que
+  `max_stale_s`) aceita sempre, para o filtro nunca ficar preso contra um rumo
+  antigo depois de uma falha longa. **180°/s não é medido**; rever com dados
+  da água.
+- **Calibração gravada e carregada.** `save_calibration()` só grava com 3333;
+  `load_calibration()` valida tudo (três offsets int16 e dois raios) antes de
+  escrever no sensor, e um ficheiro mau deixa o sensor como estava. Carregar
+  **não** abre o gate do `read()`: continua a exigir sys e mag a 3, que o
+  sensor só volta a reportar depois de algum movimento. Encurta a calibração,
+  não a dispensa — e há um teste que o fixa.
+- **O ficheiro de calibração não vai para o git.** É da placa e da montagem;
+  offsets de outra montagem carregados por engano dão um rumo plausível e
+  errado, que é a falha que esta classe existe para não ter.
+- `heading_bench`: `--guardar-cal`, `--carregar-cal`, `--taxa-max`, e aviso
+  na linha quando um salto é rejeitado, com o total no fim.
+
+#### Testes
+- `test_real_heading.py`: 13 → 24. Os casos são os observados na bancada
+  (23 → 134 → 25 rejeitado; 74 → 327 → 320 aceite com uma amostra de atraso),
+  mais a passagem pelo zero, rotação lenta intocada, falha longa, saltos
+  incoerentes seguidos, e a calibração (ida e volta, recusa de gravar
+  incompleta, ficheiro mau não toca no sensor, carregar não dispensa o gate).
+- Total: **197 testes Python** e o `system_bench` com 10/10.
+
+#### Problemas / limitações
+- A calibração foi feita com a placa na mão. **Não vale para o barco**: tem
+  de ser refeita no tabuleiro definitivo, com baterias e motores no sítio.
+- Declinação ainda a 0 e offset de montagem por medir. O rumo mostrado é
+  magnético e é o da placa.
+- O `RealHeading` continua fora do `main.py`; o NAV continua sintético.
+- O filtro de quarentena e a persistência da calibração estão testados contra
+  drivers falsos. **Nunca correram contra o sensor real** — o primeiro
+  `--guardar-cal` / `--carregar-cal` no Pi é o teste que falta.
+
+#### Lições aprendidas
+- **Um defeito mecânico imita um elétrico.** Reinício do sensor, barramento
+  perdido e calibração a zero eram exatamente os sintomas da placa avariada
+  de setembro. A diferença estava na correlação com o movimento — e o teste
+  que a separou foi trocar os cabos, não medir.
+- **A placa da Devantech não aparece no barramento sem o link.** Estava
+  escrito no log de 15 de setembro e foi o que poupou a noite.
+
+#### Próximo passo
+1. No Pi: `--guardar-cal` numa calibração completa (gyro primeiro, parado),
+   desligar, `--carregar-cal`, e ver quanto movimento é preciso para o rumo
+   voltar.
+2. Teste dos 90° com a placa pousada, e uma sessão longa parada para contar
+   saltos rejeitados.
+3. Calibração no tabuleiro definitivo; offset de montagem e declinação.
+4. Mantém-se o ensaio de ESCs e motores, e a pesagem da estrutura.

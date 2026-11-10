@@ -13,6 +13,10 @@ sensor real falha de quatro maneiras:
      desaparece com medias nem com mais amostras.
   4. Da o rumo da PLACA, nao o da proa. Depende de como o sensor ficou
      montado.
+  5. Pode dar UMA leitura absurda no meio de leituras boas. Observado na
+     bancada de 2026-11-10: 23 -> 134 -> 25 graus a 5 Hz, ou seja, um salto
+     de ~110 graus numa amostra que volta logo atras. Com calibracao 3/3,
+     sem erro de I2C. No NAV isso seria um golpe de leme de uma amostra.
 
 Politica desta classe: perante duvida, nao devolver numero. read() levanta
 HeadingUnavailable em vez de inventar um rumo, e cabe ao chamador aplicar
@@ -22,6 +26,7 @@ O driver e injetado (parametro `driver`) para que os testes corram sem
 hardware nenhum. Ver create_bno055() para o caso real.
 """
 
+import json
 import time
 from collections import namedtuple
 
@@ -40,6 +45,18 @@ Calibration = namedtuple("Calibration", "sys gyro accel mag")
 # NAO deixar este valor por adivinhar: consultar a calculadora da NOAA/NCEI
 # para a data e coordenadas do ensaio e passar o valor no construtor.
 DECLINATION_UNSET = 0.0
+
+# Taxa de rotacao maxima credivel para o barco, em graus/s. Um catamara de
+# 80 cm com jatos diferenciais a 30% roda muito abaixo disto; o valor e
+# folgado de proposito, porque o filtro existe para apanhar leituras
+# fisicamente impossiveis (~550 graus/s observados), nao para alisar
+# rotacoes reais. NAO e um valor medido -- rever quando houver ensaio na
+# agua.
+MAX_RATE_DPS = 180.0
+
+# Intervalo minimo considerado entre leituras, para a taxa nao explodir
+# quando duas leituras chegam quase ao mesmo tempo.
+_MIN_DT_S = 0.02
 
 
 class RealHeading:
@@ -60,6 +77,9 @@ class RealHeading:
       max_stale_s      tolerancia a falhas transitorias: perante uma leitura
                        falhada devolve a ultima boa se for mais nova do que
                        isto; caso contrario levanta HeadingUnavailable
+      max_rate_dps     taxa de rotacao maxima credivel, em graus/s. Uma
+                       leitura que implique rodar mais depressa do que isto
+                       desde a ultima boa e posta de quarentena (ver read())
     """
 
     # Fonte real: o main.py so deixa o modo NAV comandar o ESP32 quando
@@ -68,14 +88,19 @@ class RealHeading:
 
     def __init__(self, driver, mount_offset_deg=0.0,
                  declination_deg=DECLINATION_UNSET,
-                 min_sys=3, min_mag=3, max_stale_s=0.5, clock=time.monotonic):
+                 min_sys=3, min_mag=3, max_stale_s=0.5,
+                 max_rate_dps=MAX_RATE_DPS, clock=time.monotonic):
         self.driver = driver
         self.mount_offset_deg = mount_offset_deg
         self.declination_deg = declination_deg
         self.min_sys = min_sys
         self.min_mag = min_mag
         self.max_stale_s = max_stale_s
+        self.max_rate_dps = max_rate_dps
         self._clock = clock
+        self._suspect = None        # ultima leitura posta de quarentena
+        self._suspect_t = None
+        self._rejected_total = 0
         self._last_good = None      # rumo ja corrigido
         self._last_good_t = None
         self._fail_count = 0
@@ -141,10 +166,55 @@ class RealHeading:
 
         heading = normalize_angle(raw + self.mount_offset_deg
                                   + self.declination_deg)
+
+        if not self._plausible(heading, now):
+            # Quarentena: esta leitura nao entra. Fica guardada para ser
+            # confirmada (ou nao) pela proxima.
+            self._suspect = heading
+            self._suspect_t = now
+            self._rejected_total += 1
+            self._fail_count += 1
+            # _plausible() so rejeita com uma leitura boa recente, portanto
+            # devolve-la e seguro e e o mesmo que a falha transitoria faz.
+            return self._last_good
+
         self._last_good = heading
         self._last_good_t = now
+        self._suspect = None
+        self._suspect_t = None
         self._fail_count = 0
         return heading
+
+    def _rate_ok(self, a, b, dt):
+        dt = max(dt, _MIN_DT_S)
+        return abs(normalize_angle(a - b)) / dt <= self.max_rate_dps
+
+    def _plausible(self, heading, now):
+        """A leitura e fisicamente possivel face ao que se sabe?
+
+        Aceita sempre que nao ha referencia recente: sem ultima leitura boa,
+        ou com ela mais velha do que max_stale_s. Sem isto, depois de uma
+        falha longa durante a qual o barco rodou de verdade, todas as
+        leituras novas seriam rejeitadas para sempre.
+
+        Rejeita um salto acima de max_rate_dps em relacao a ultima boa,
+        A MENOS que a leitura anterior (a de quarentena) concorde com esta.
+        Duas leituras seguidas coerentes entre si sao uma rotacao real e
+        rapida (a mao na bancada, por exemplo); uma leitura isolada que nao
+        concorda com nada, antes nem depois, e o defeito observado. O custo
+        e uma amostra de atraso num salto real, e e so esse.
+        """
+        if self._last_good is None or self._last_good_t is None:
+            return True
+        if now - self._last_good_t > self.max_stale_s:
+            return True
+        if self._rate_ok(heading, self._last_good, now - self._last_good_t):
+            return True
+        if (self._suspect is not None and self._suspect_t is not None
+                and self._rate_ok(heading, self._suspect,
+                                  now - self._suspect_t)):
+            return True
+        return False
 
     def read_or_none(self):
         """Como read(), mas devolve None em vez de levantar.
@@ -161,6 +231,75 @@ class RealHeading:
     def fail_count(self):
         """Leituras falhadas seguidas desde a ultima boa."""
         return self._fail_count
+
+    @property
+    def rejected_total(self):
+        """Leituras postas de quarentena desde o arranque (saltos impossiveis)."""
+        return self._rejected_total
+
+    # -- persistencia da calibracao --------------------------------------
+
+    def save_calibration(self, path):
+        """Grava os offsets de calibracao do sensor num JSON.
+
+        So grava com os quatro contadores a 3. Offsets de uma calibracao
+        incompleta seriam carregados no arranque seguinte como se fossem
+        bons, e o sensor partiria de um ponto errado sem nada o dizer.
+        """
+        cal = self.calibration()
+        if tuple(cal) != (3, 3, 3, 3):
+            raise ValueError(f"calibracao incompleta {tuple(cal)}: "
+                             "so se grava com 3333")
+        d = self.driver
+        data = {
+            "sensor": "BNO055",
+            "saved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "offsets_accelerometer": list(d.offsets_accelerometer),
+            "offsets_gyroscope": list(d.offsets_gyroscope),
+            "offsets_magnetometer": list(d.offsets_magnetometer),
+            "radius_accelerometer": int(d.radius_accelerometer),
+            "radius_magnetometer": int(d.radius_magnetometer),
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        return data
+
+    def load_calibration(self, path):
+        """Carrega no sensor os offsets gravados por save_calibration().
+
+        Valida tudo ANTES de escrever no sensor: um ficheiro mal formado
+        levanta ValueError e o sensor fica como estava. Nao muda a politica
+        de leitura -- o read() continua a exigir sys e mag a 3, e o sensor
+        so os volta a reportar depois de algum movimento. Carregar offsets
+        encurta a calibracao, nao a dispensa.
+        """
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        vals = {}
+        for k in ("offsets_accelerometer", "offsets_gyroscope",
+                  "offsets_magnetometer"):
+            v = data.get(k)
+            if (not isinstance(v, list) or len(v) != 3
+                    or not all(_is_int16(x) for x in v)):
+                raise ValueError(f"{k} invalido em {path}: {v!r}")
+            vals[k] = tuple(v)
+        for k in ("radius_accelerometer", "radius_magnetometer"):
+            v = data.get(k)
+            if not _is_int16(v):
+                raise ValueError(f"{k} invalido em {path}: {v!r}")
+            vals[k] = v
+        d = self.driver
+        d.offsets_accelerometer = vals["offsets_accelerometer"]
+        d.offsets_gyroscope = vals["offsets_gyroscope"]
+        d.offsets_magnetometer = vals["offsets_magnetometer"]
+        d.radius_accelerometer = vals["radius_accelerometer"]
+        d.radius_magnetometer = vals["radius_magnetometer"]
+        return data
+
+
+def _is_int16(x):
+    return (isinstance(x, int) and not isinstance(x, bool)
+            and -32768 <= x <= 32767)
 
 
 # Enderecos possiveis do BNO055. O pino ADD do modulo escolhe entre os dois:

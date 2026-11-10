@@ -23,3 +23,8 @@ website/SAILSAFE.html
 # assets/js/app.js carrega o .glb em tempo de execucao. Se for ignorado, o
 # site publicado fica sem modelo 3D.
 Claude outputs/
+
+# Calibracao do BNO055: e da placa e da montagem (ferro e correntes a
+# volta), nao do projeto. Vive so no Pi; offsets de outra placa ou de outra
+# montagem carregados por engano dao um rumo plausivel e errado.
+software/raspberry_pi/config/bno055_calibration.json
