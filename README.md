@@ -244,10 +244,12 @@ Drop `--fake` for the real sensor.
 
 The BNO055 forgets its calibration whenever it loses power.
 `heading_bench --guardar-cal` writes the offsets to `config/bno055_calibration.json`
-the first time all four counters reach 3; `--carregar-cal` loads them at start-up. This
-shortens calibration, it does not remove it: the sensor only reports sys and mag at 3
-again after some movement, and no heading is given before that. The file is per board
-and per mounting, so it is git-ignored and lives only on the Pi.
+the first time all four counters reach 3; `--carregar-cal` loads them at start-up.
+Measured on the bench: after loading, the sensor reported 3333 within ~1 s with no
+movement at all, against ~80 s for a full calibration. That is also the catch — the
+sensor trusts whatever offsets it is given, so offsets from another board or another
+mounting would give a plausible, wrong heading with every counter at 3. The file is per
+board and per mounting, so it is git-ignored and lives only on the Pi.
 
 `sense_bench --calibrar a2 12.60` stores the scale
 factor for one channel against a multimeter reading; without that file the readings are

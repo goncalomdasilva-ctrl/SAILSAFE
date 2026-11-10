@@ -21,10 +21,11 @@ Uso:
 Calibracao gravada: o BNO055 perde-a sempre que perde alimentacao.
 --guardar-cal grava os offsets em config/bno055_calibration.json na
 primeira vez que os quatro contadores chegam a 3; --carregar-cal escreve-os
-no sensor ao arrancar. Carregar NAO dispensa a calibracao: o sensor so volta
-a reportar sys e mag a 3 depois de algum movimento, e o rumo so aparece
-nessa altura. Encurta-a, de um oito completo para um movimento curto.
-Offsets gravados com a placa na mao nao valem para o barco montado.
+no sensor ao arrancar. Na bancada o sensor passou a 3333 em ~1 s depois de
+carregar, sem movimento (contra ~80 s de calibracao completa). Por isso
+mesmo, o sensor nao distingue offsets certos de errados: offsets gravados
+com a placa na mao NAO valem para o barco montado, e carrega-los la daria
+um rumo plausivel e errado com os contadores todos a 3.
 
 Procedimento de calibracao do BNO055 (modo NDOF):
   gyro  -> pousar parado alguns segundos
@@ -156,7 +157,7 @@ def main():
                   "recalibrar com --guardar-cal.")
             return 1
         print(f"[CAL] Carregada a calibracao de {data.get('saved_at', '?')}. "
-              "Mexer um pouco a placa ate sys e mag chegarem a 3.")
+              "Confirmar que foi gravada nesta montagem.")
 
     ctrl = HeadingController(kp=args.kp, max_steer=100.0)
     ctrl.set_target(args.alvo)

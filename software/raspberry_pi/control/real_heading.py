@@ -269,9 +269,14 @@ class RealHeading:
 
         Valida tudo ANTES de escrever no sensor: um ficheiro mal formado
         levanta ValueError e o sensor fica como estava. Nao muda a politica
-        de leitura -- o read() continua a exigir sys e mag a 3, e o sensor
-        so os volta a reportar depois de algum movimento. Carregar offsets
-        encurta a calibracao, nao a dispensa.
+        de leitura -- o read() continua a exigir sys e mag a 3.
+
+        ATENCAO: o gate nao protege contra offsets errados. Medido na
+        bancada (2026-11-10): depois de carregar, o sensor reportou 3333 em
+        ~1 s, sem movimento nenhum, e deu rumo. O sensor confia nos offsets
+        que recebe; se forem de outra placa ou de outra montagem, o rumo
+        sai plausivel e errado e nenhum contador o denuncia. So carregar
+        offsets gravados na mesma montagem.
         """
         with open(path, encoding="utf-8") as f:
             data = json.load(f)

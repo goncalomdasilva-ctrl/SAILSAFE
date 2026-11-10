@@ -2738,3 +2738,37 @@ do BNO055 chegou e foi soldada; é a da **Devantech** (robot-electronics.co.uk).
    saltos rejeitados.
 3. Calibração no tabuleiro definitivo; offset de montagem e declinação.
 4. Mantém-se o ensaio de ESCs e motores, e a pesagem da estrutura.
+
+#### Ensaio no Pi e correção (mesmo dia): carregar a calibração não pede movimento
+O `--guardar-cal` / `--carregar-cal` correu contra o sensor real:
+- **Calibração completa e gravada.** Com o gyro primeiro (placa pousada e
+  parada — na mão nunca passa de 0, o tremor chega), ~80 s desde o arranque
+  até ao primeiro rumo.
+- **Desligado, religado, `--carregar-cal`:** `cal=0333` na segunda leitura e
+  **`3333` em ~1 s, sem movimento nenhum**. Primeiro rumo ao fim de ~1,8 s.
+- Zero falhas de I2C nas duas sessões. Quatro saltos rejeitados no total
+  das três sessões da noite: dois isolados com rumo contínuo antes e depois
+  (o defeito, filtrado), e rotações reais confirmadas pela leitura seguinte.
+
+**O que estava escrito acima está errado:** carregar os offsets não obriga a
+movimento para o sensor voltar a reportar 3. E isso tem uma consequência que
+não é só de documentação: **o gate do `read()` não protege contra offsets
+errados.** O sensor confia nos offsets que recebe e declara-se calibrado.
+Offsets de outra placa ou de outra montagem dariam um rumo plausível e
+errado com os quatro contadores a 3 — exatamente o modo de falha que a
+classe existe para não ter. Hoje a única proteção é o ficheiro não ir para o
+git e viver só no Pi. Corrigidos os docstrings, o README e a mensagem do
+`heading_bench`.
+
+Fica por decidir (**OPEN-017**): como amarrar o ficheiro à montagem — uma
+etiqueta de montagem gravada com os offsets e exigida ao carregar, ou uma
+verificação de rumo contra uma referência conhecida antes do ARM.
+
+#### Observação: o controlador oscila com o erro em ±180°
+Com o alvo a 0° e o rumo em torno de 180°, o steer troca entre +100 e −100
+de uma leitura para a seguinte (180,2 → 179,6 → 180,1). É matemática, não
+ruído do sensor: o lado curto muda com décimas de grau. Na bancada é
+inofensivo; no barco é dar leme todo para um lado e para o outro a 5 Hz
+enquanto estiver virado ao contrário do alvo. Precisa de histerese no
+sentido de rotação (manter o sentido escolhido até o erro sair de uma banda
+à volta de 180°). **OPEN-018.**
