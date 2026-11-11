@@ -152,12 +152,15 @@
             <path d="M0,0 L7,3 L0,6 z" fill="#98A0A8"/>
           </marker>
         </defs>
+        <!-- ligações sem seta: o tronco comum do PWM, que só ganha seta nos ramos -->
+        <g stroke="#98A0A8" stroke-width="1.4" fill="none">
+          <path d="M500,296 L500,352"/>
+        </g>
         <g stroke="#98A0A8" stroke-width="1.4" marker-end="url(#ar)" fill="none">
           <path d="M500,64 L500,104"/>
           <path d="M500,178 L500,222"/>
-          <path d="M500,296 L500,336"/>
-          <path d="M430,352 L300,352 L300,378"/>
-          <path d="M570,352 L700,352 L700,378"/>
+          <path d="M500,352 L300,352 L300,378"/>
+          <path d="M500,352 L700,352 L700,378"/>
           <path d="M300,428 L300,446"/><path d="M700,428 L700,446"/>
           <path d="M232,141 L302,141"/>
         </g>
@@ -165,7 +168,7 @@
         <g>
           <rect x="392" y="22" width="216" height="42" rx="7" fill="#F4F5F3" stroke="#CBCEC9"/>
           <text x="500" y="48" text-anchor="middle" fill="#16191C" font-size="14" data-i18n-svg="a.op"></text>
-          <text x="516" y="90" text-anchor="middle" fill="#5A6169" font-size="11.5" font-family="ui-monospace,monospace" data-i18n-svg="a.oplink"></text>
+          <text x="512" y="88" text-anchor="start" fill="#5A6169" font-size="11.5" font-family="ui-monospace,monospace" data-i18n-svg="a.oplink"></text>
         </g>
 
         <g>
@@ -179,9 +182,10 @@
           <rect x="40" y="112" width="192" height="58" rx="8" fill="#F4F5F3" stroke="#7E22CE" stroke-width="1.2"/>
           <text x="136" y="135" text-anchor="middle" fill="#16191C" font-size="13.5" data-i18n-svg="a.sensors"></text>
           <text x="136" y="155" text-anchor="middle" fill="#5A6169" font-size="11" font-family="ui-monospace,monospace">GPS · BNO055 · ADS1015</text>
+          <text x="267" y="133" text-anchor="middle" fill="#5A6169" font-size="10" font-family="ui-monospace,monospace" data-i18n-svg="a.sensorlink"></text>
         </g>
 
-        <text x="516" y="207" text-anchor="middle" fill="#C2410C" font-size="11.5" font-family="ui-monospace,monospace" data-i18n-svg="a.link"></text>
+        <text x="512" y="204" text-anchor="start" fill="#C2410C" font-size="11.5" font-family="ui-monospace,monospace" data-i18n-svg="a.link"></text>
 
         <g>
           <rect x="302" y="222" width="396" height="74" rx="9" fill="#FFFFFF" stroke="#0369A1" stroke-width="1.4"/>
@@ -190,7 +194,7 @@
           <text x="500" y="286" text-anchor="middle" fill="#5A6169" font-size="11" data-i18n-svg="a.esptasks"></text>
         </g>
 
-        <text x="500" y="330" text-anchor="middle" fill="#5A6169" font-size="11" font-family="ui-monospace,monospace">PWM</text>
+        <text x="512" y="328" text-anchor="start" fill="#5A6169" font-size="11" font-family="ui-monospace,monospace">PWM 50 Hz</text>
 
         <g>
           <rect x="216" y="378" width="168" height="50" rx="8" fill="#F4F5F3" stroke="#CBCEC9"/>
@@ -260,12 +264,13 @@
     <div class="grid2" id="swGrid"></div>
     <div style="margin-top:30px">
       <h4 style="font-size:14px;margin-bottom:4px" data-i18n="sw.proto"></h4>
-      <div class="code">L:0 R:0<span class="c">      → stop / neutro</span>
-L:10 R:10<span class="c">    → ambos os lados a 10 %</span>
-L:12 R:8<span class="c">     → correção diferencial</span>
+      <div class="code">L: 0 R: 0<span class="c">     <span data-i18n="sw.proto.stop"></span></span>
+L: 10 R: 10<span class="c">   <span data-i18n="sw.proto.both"></span></span>
+L: 12 R: 8<span class="c">    <span data-i18n="sw.proto.diff"></span></span>
+L: 40 R: 40<span class="c">   <span data-i18n="sw.proto.over"></span></span>
 
-motor_esquerdo = throttle_base <span class="c">-</span> correcao_direcao
-motor_direito&nbsp; = throttle_base <span class="c">+</span> correcao_direcao</div>
+left&nbsp; = clamp(throttle <span class="c">+</span> steer, 0, 30)<span class="c">     <span data-i18n="sw.proto.steer"></span></span>
+right = clamp(throttle <span class="c">−</span> steer, 0, 30)</div>
     </div>
   </div>
 </section>
@@ -276,22 +281,27 @@ motor_direito&nbsp; = throttle_base <span class="c">+</span> correcao_direcao</d
     <div class="eyebrow">07 — Status</div>
     <h2 data-i18n="stt.title"></h2>
     <p class="lead" data-i18n="stt.lead"></p>
+    <p class="stamp" data-i18n="stt.updated"></p>
     <div class="statusCols">
       <div class="sCol" style="--c:var(--ok)">
         <h3><span class="badge b-validated" data-i18n="st.validated"></span><span data-i18n="stt.done"></span></h3>
         <ul><li data-i18n="stt.d1"></li><li data-i18n="stt.d2"></li><li data-i18n="stt.d3"></li>
             <li data-i18n="stt.d4"></li><li data-i18n="stt.d5"></li><li data-i18n="stt.d6"></li>
-            <li data-i18n="stt.d7"></li><li data-i18n="stt.d8"></li></ul>
+            <li data-i18n="stt.d7"></li><li data-i18n="stt.d8"></li>
+            <li data-i18n="stt.d9"></li><li data-i18n="stt.d10"></li>
+            <li data-i18n="stt.d11"></li></ul>
       </div>
       <div class="sCol" style="--c:var(--est)">
         <h3><span class="badge b-estimated" data-i18n="st.estimated"></span><span data-i18n="stt.wip"></span></h3>
         <ul><li data-i18n="stt.w1"></li><li data-i18n="stt.w2"></li>
-            <li data-i18n="stt.w3"></li><li data-i18n="stt.w4"></li></ul>
+            <li data-i18n="stt.w3"></li><li data-i18n="stt.w4"></li>
+            <li data-i18n="stt.w5"></li><li data-i18n="stt.w6"></li></ul>
       </div>
       <div class="sCol" style="--c:var(--open)">
         <h3><span class="badge b-open" data-i18n="st.open"></span><span data-i18n="stt.open"></span></h3>
         <ul><li data-i18n="stt.o1"></li><li data-i18n="stt.o2"></li>
-            <li data-i18n="stt.o3"></li><li data-i18n="stt.o4"></li></ul>
+            <li data-i18n="stt.o3"></li><li data-i18n="stt.o4"></li>
+            <li data-i18n="stt.o5"></li><li data-i18n="stt.o6"></li></ul>
       </div>
     </div>
     <div class="note" style="border-left-color:var(--mut2)">

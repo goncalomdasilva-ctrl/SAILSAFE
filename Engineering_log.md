@@ -2823,3 +2823,97 @@ como no `battery_guard`.
 #### Próximo passo
 1. OPEN-019 (watchdog + ESC sem sinal), depois o ensaio dos motores.
 2. Rádio + relé quando houver orçamento; heartbeat do operador antes disso.
+
+### 2026-11-11 (sessão 2 — revisão geral sem bancada: site, OPEN-018 e motor_bench)
+
+Sessão de secretária, sem hardware, feita com assistência de IA sobre a pasta
+inteira: site, modelos, software e plano. **Nada do que se segue tocou numa
+placa.** O que foi verificado foi-o por testes sem hardware e por abrir o site
+num browser; está escrito abaixo, item a item, o que isso prova e o que não.
+
+#### Trabalho realizado
+- **Site posto em dia com o projeto.** Estava parado em meados de setembro e
+  já se contradizia com o README: dizia que os motores não tinham chegado (estão
+  em mãos e pesados desde 25-09), 149 testes, massa de 6,0–6,5 kg «nunca pesada»,
+  calado de 38 mm como número único, «nenhum leitor viu ainda o seu sensor»
+  (GPS validado a 15-09, primeiro rumo a 10-11), divisores a 10k/2k2 (são 10k/2k
+  desde 14-09), fusível de 40 A sem mais, e «interface web» para o operador, que
+  não existe. Textos em `i18n.js`, números em `data.js`, PT e EN.
+- **A secção de estado passa a ter data** (`stt.updated`). É a defesa contra a
+  lição de 13-09: uma fonte atualizada por partes mente com ar de estar em dia.
+- **O site deixa de chamar «watchdog» ao failsafe por timeout** e passa a listar
+  OPEN-019 e OPEN-017 nas decisões em aberto. Um site que diz «watchdog» na
+  semana em que se descobriu que não há watchdog era a contradição seguinte.
+- **Três defeitos de apresentação, medidos no browser e não a olho:**
+  (1) no telemóvel, a dica «arrasta para olhar à volta» ficava impressa por cima
+  do parágrafo em três dos cinco capítulos, e o botão «repor vista» por cima da
+  última linha em todos; (2) o bloco do protocolo de comando não tinha
+  `white-space:pre` e as seis linhas corriam seguidas num parágrafo; (3) no
+  diagrama de arquitetura as setas atravessavam as legendas e o ramo ESP32 → ESCs
+  não estava ligado ao tronco.
+- **O bloco do protocolo contradizia o `mixer.py`:** dizia
+  `esquerdo = base − correção`, e o código faz `left = throttle + steer` com
+  steer positivo a estibordo. Corrigido para a convenção do código.
+- **OPEN-018, histerese em ±180° no `HeadingController`.** Dentro de uma banda de
+  ±15° à volta dos 180° o controlador compromete-se com o primeiro sentido
+  escolhido e mantém-no até o erro sair da banda. 8 testes novos, incluindo os
+  três valores observados na bancada (180,2 → 179,6 → 180,1) e uma malha fechada
+  com barco lento: sem histerese, 149 trocas de lado em 150 ciclos e rotação
+  líquida nula; com ela, zero trocas.
+- **`tools/motor_bench.py`**, a ferramenta que faltava para impulsos com mais de
+  1 s. Abre a trava com STOP confirmado, sobe em rampa, repete o comando a 5 Hz
+  e acaba sempre em STOP confirmado. Exige `--seco` (máx. 10 % e 1 s) ou
+  `--submerso`. 23 testes contra um ESP32 falso que espelha a trava, o teto e o
+  failsafe.
+- **`system_bench` deixa de ficar pendurado** quando o `main.py` morre no
+  arranque (visto num PC sem pyserial: o `open()` do FIFO bloqueava para sempre).
+- READMEs: `test_nav_mode.py` faltava na lista de testes da raiz; o do site
+  descrevia um workflow e uma estrutura de ficheiros que já não existem.
+- Total: **228 testes Python**, 182 verificações C++, `system_bench` 10/10.
+
+#### Decisões técnicas
+- **O firmware não foi tocado.** OPEN-019 (watchdog do loop) é o próximo passo
+  do plano e podia ter sido escrito hoje — mas o toolchain do ESP32 não estava
+  disponível na sessão, e a API do watchdog muda entre o core 2.x e o 3.x do
+  arduino-esp32. Um watchdog escrito de memória e verificado só contra os
+  cabeçalhos falsos de `tools/stub/` era exatamente o que o `syntax_check.sh`
+  avisa que não prova nada. Fica para uma sessão com `arduino-cli compile`.
+- **A largura da banda (15°) é de secretária**, como os 180°/s da quarentena.
+  Está numa constante (`FLIP_BAND_DEG`) com o aviso ao lado; zero desliga-a e
+  repõe o comportamento antigo.
+- **O `motor_bench` não mede corrente**, aceita-a no fim, lida do wattmeter,
+  para ficar no log ao lado do impulso. Os divisores e o sensor não existem;
+  inventar uma leitura seria o erro que o `power_sense` já recusa cometer.
+- **Não se mexeu no aspeto do palco de abertura.** As escolhas de contraste
+  estão comentadas no CSS como deliberadas; corrigiram-se sobreposições, não
+  gostos.
+
+#### Problemas / limitações
+- **A histerese nunca viu o BNO055.** O caso que a motivou foi observado no
+  `heading_bench`; falta repeti-lo lá: alvo a 0°, sensor virado a 180°, e ver o
+  steer ficar num lado.
+- **O `motor_bench` nunca correu contra a placa nem contra um ESC.** O ESP32
+  falso é um espelho em Python do `motor_safety.h`; se os dois discordarem, é o
+  espelho que está errado. Primeiro uso real: `--seco --pct 10 --dur 1`, com o
+  procedimento de 25-09 feito e OPEN-019 fechado.
+- **Os botões do visualizador 3D não foram ensaiados nesta sessão** (browser sem
+  GPU: o canvas renderiza, a interação não é fiável). O palco e todas as secções
+  de texto foram vistos em 1440 px e em 390 px, PT e EN, sem erros de consola.
+- **A arquitetura v1.13 está atrás do log** desde setembro: não tem a pesagem,
+  o z=80, o BNO055 novo nem OPEN-014 a OPEN-019. O site já diz que, onde os dois
+  discordam, vale o log — mas o documento continua por atualizar.
+- **O `sailsafe.glb` do site é do CAD v6.3** e mostra as baterias a z=45 e motor
+  e jato como peças separadas com 0,69 kg por lado. O site diz agora que é
+  assim; a geometria só se corrige depois de pesada a estrutura e decidido o X
+  dos alojamentos.
+- O `SAILSAFE.html` (ficheiro único) foi regenerado nesta sessão e aberto por
+  `file://` sem erros. Não vai para o git: qualquer alteração futura ao site
+  obriga a `cd website && node build_standalone.mjs` outra vez.
+- Classificação por rever no site, deixada como estava: a potência do motor
+  (300 W) e a potência combinada (600 W) estão marcadas «validado» e são números
+  de catálogo.
+
+#### Próximo passo
+- Mantém-se a ordem de hoje de manhã: OPEN-019 primeiro, depois os motores.
+- No Pi, antes disso: `python3 -m tools.heading_bench` com o alvo oposto ao
+  rumo, para ver a histerese com o sensor verdadeiro.

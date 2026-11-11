@@ -1,6 +1,8 @@
 /* SAILSAFE — base de dados de componentes e subsistemas
    Geometria: SAILSAFE_concept_v6_3.step
-   Dados técnicos: SAILSAFE_Architecture_v1_11.docx
+   Dados técnicos: SAILSAFE_Architecture_v1_13.docx, corrigidos pelo
+   Engineering_log.md até 2026-11-11 (pesagem de 25-09, GPS de 15/17-09,
+   BNO055 de 10-11). Onde o log e a arquitetura discordam, vale o log.
    status: 'validated' | 'estimated' | 'derived' | 'open'            */
 
 export const SUBSYSTEMS = {
@@ -122,8 +124,8 @@ export const PARTS = {
   esp32_devkit: {
     sub: 'compute', qty: 1,
     name: P('ESP32 DevKit', 'ESP32 DevKit'),
-    desc: P('Controlador de tempo real dos motores. Recebe comandos do Raspberry Pi por USB-C, valida-os, gera o PWM para os dois ESCs e executa o watchdog. Esta separação impede que atrasos do sistema operativo do Raspberry Pi cheguem aos ESCs.',
-            'Real-time motor controller. Receives commands from the Raspberry Pi over USB-C, validates them, generates PWM for both ESCs and runs the watchdog. This split keeps Raspberry Pi OS scheduling latency away from the ESCs.'),
+    desc: P('Controlador de tempo real dos motores. Recebe comandos do Raspberry Pi por USB-C, valida-os, gera o PWM para os dois ESCs e executa o failsafe por timeout, que tranca a propulsão. Ainda não tem watchdog de hardware: é o ponto em aberto a fechar antes do ensaio dos motores. Esta separação impede que atrasos do sistema operativo do Raspberry Pi cheguem aos ESCs.',
+            'Real-time motor controller. Receives commands from the Raspberry Pi over USB-C, validates them, generates PWM for both ESCs and runs the timeout failsafe, which latches propulsion. It has no hardware watchdog yet: that is the open item to close before the motor bench test. This split keeps Raspberry Pi OS scheduling latency away from the ESCs.'),
     specs: [P('55 × 28 × 13 mm', '55 × 28 × 13 mm'),
             P('Failsafe medido: ≈1,1 s', 'Measured failsafe: ≈1.1 s'),
             P('Ponte CH341 → /dev/ttyUSB0', 'CH341 bridge → /dev/ttyUSB0')],
@@ -135,7 +137,8 @@ export const PARTS = {
     desc: P('ADC externo de 12 bits em I2C, para leituras analógicas de tensão e corrente de bateria e sensores adicionais.',
             'External 12-bit I2C ADC for analogue battery voltage and current reads and additional sensors.'),
     specs: [P('25 × 18 × 4 mm', '25 × 18 × 4 mm'),
-            P('I2C, partilhado com o BNO055', 'I2C, shared with the BNO055')],
+            P('I2C 0x48, partilhado com o BNO055', 'I2C 0x48, shared with the BNO055'),
+            P('Responde no barramento; divisores por montar', 'Answers on the bus; dividers not built yet')],
     status: 'validated'
   },
 
@@ -146,7 +149,8 @@ export const PARTS = {
     desc: P('Módulo GPS completo com antena ativa, em UART dedicada. Fornece posição e velocidade para a navegação por waypoints. Sem fix válido, o sistema não inicia navegação autónoma.',
             'Complete GPS module with active antenna on a dedicated UART. Supplies position and speed for waypoint navigation. Without a valid fix the system will not start autonomous navigation.'),
     specs: [P('25 × 25 × 8 mm', '25 × 25 × 8 mm'),
-            P('UART dedicada', 'Dedicated UART'),
+            P('UART do GPIO · /dev/serial0 · 9600 baud', 'GPIO UART · /dev/serial0 · 9600 baud'),
+            P('Em bancada: 8 satélites, HDOP 1,05', 'On the bench: 8 satellites, HDOP 1.05'),
             P('Ponto mais alto do veículo', 'Highest point on the vehicle')],
     status: 'validated'
   },
@@ -164,7 +168,9 @@ export const PARTS = {
     desc: P('Unidade inercial em I2C. Fornece heading, inclinação e dados inerciais ao controlador de rumo. É a referência de orientação de todo o controlo de heading hold.',
             'I2C inertial measurement unit supplying heading, attitude and inertial data to the heading controller. It is the orientation reference for the whole heading-hold loop.'),
     specs: [P('20 × 27 × 5 mm', '20 × 27 × 5 mm'),
-            P('I2C (SDA/SCL partilhados)', 'I2C (shared SDA/SCL)')],
+            P('I2C 0x28 a 10 kHz (SDA/SCL partilhados)', 'I2C 0x28 at 10 kHz (shared SDA/SCL)'),
+            P('Primeiro rumo real a 10 nov.: ≈1° em repouso', 'First real heading on 10 Nov: ≈1° at rest'),
+            P('Por calibrar no barco', 'Not yet calibrated on the boat')],
     status: 'validated'
   },
   suporte_BNO055: {
@@ -183,7 +189,9 @@ export const PARTS = {
     desc: P('Uma bateria de propulsão por casco, alojada abaixo do convés com forro interior em contraplacado de 3 mm selado a epóxi — o LiPo nunca contacta o XPS. Foi esta decisão que baixou o centro de gravidade de ≈142 para ≈107 mm. O carregamento é sempre feito fora do barco, em saco ou superfície ignífuga.',
             'One propulsion battery per hull, housed below deck in an epoxy-sealed 3 mm plywood liner — the LiPo never touches the XPS. This decision is what dropped the centre of gravity from ≈142 to ≈107 mm. Charging is always done outside the boat, in a fireproof bag or on a fireproof surface.'),
     specs: [P('155 × 48 × 35 mm · 11,1 V', '155 × 48 × 35 mm · 11.1 V'),
-            P('Centro X = 341, y = ±123, fundo z = 45 mm', 'Centre X = 341, y = ±123, floor z = 45 mm'),
+            P('Fundo a z = 45 mm no CAD; decidido subir para z = 80 mm', 'Floor at z = 45 mm in the CAD; decision taken to raise it to z = 80 mm'),
+            P('Posição em X por fechar após pesar a estrutura', 'X position to be settled once the structure is weighed'),
+            P('328 g cada (pesada)', '328 g each (weighed)'),
             P('Loop key XT90-S por casco', 'XT90-S loop key per hull'),
             P('Circuito de propulsão independente', 'Independent propulsion circuit')],
     status: 'validated'
@@ -211,7 +219,7 @@ export const PARTS = {
     name: P('Distribuição e proteção', 'Distribution and protection'),
     desc: P('Distribuição e proteção. Na arquitetura de três circuitos independentes do esquema v1.11 não existe barramento comum nem fusível principal: cada casco tem o seu fusível de 40 A junto à própria bateria, e a eletrónica tem fusível de 10 A com interruptor estanque. Nenhum cabo de potência atravessa a ponte. Os Wagos e bornes ficam limitados a sinais e baixa corrente.',
             'Distribution and protection. In the three-independent-circuit architecture of schematic v1.11 there is no common bus bar and no main fuse: each hull carries its own 40 A fuse next to its own battery, and the electronics branch has a 10 A fuse with a sealed switch. No power cable crosses the bridge. Wagos and terminal blocks are limited to signals and low current.'),
-    specs: [P('Fusível de 40 A por casco', '40 A fuse per hull'),
+    specs: [P('Fusível por casco: 40 A no esquema, 30 A em bancada', 'Fuse per hull: 40 A in the schematic, 30 A on the bench'),
             P('Fusível da eletrónica 10 A', 'Electronics fuse 10 A'),
             P('Cabo 6 / 1,5 / 0,75 mm²', 'Cable 6 / 1.5 / 0.75 mm²')],
     status: 'validated'
@@ -219,10 +227,10 @@ export const PARTS = {
   sensor_corrente: {
     sub: 'power', qty: 1,
     name: P('Sensor de corrente', 'Current sensor'),
-    desc: P('Medição elétrica através do ADS1015. Cada casco tem um divisor resistivo de 10 kΩ / 2,2 kΩ ligado a jusante da chave de corte, o que faz o sinal servir duas funções: mede a tensão da bateria e indica o estado do ramo — 0 V significa casco desarmado. É a peça que permitirá substituir por medição real as estimativas de consumo, autonomia e eficiência.',
-            'Electrical measurement through the ADS1015. Each hull has a 10 kΩ / 2.2 kΩ divider tapped downstream of the cut-off key, so the signal does double duty: it reads battery voltage and reports branch state — 0 V means that hull is disarmed. This is the part that will let real measurements replace the current, endurance and efficiency estimates.'),
+    desc: P('Medição elétrica através do ADS1015. Cada casco tem um divisor resistivo de 10 kΩ / 2 kΩ (rácio 1/6) ligado a jusante da chave de corte, o que faz o sinal servir duas funções: mede a tensão da bateria e indica o estado do ramo — 0 V significa casco desarmado. É a peça que permitirá substituir por medição real as estimativas de consumo, autonomia e eficiência.',
+            'Electrical measurement through the ADS1015. Each hull has a 10 kΩ / 2 kΩ divider (ratio 1/6) tapped downstream of the cut-off key, so the signal does double duty: it reads battery voltage and reports branch state — 0 V means that hull is disarmed. This is the part that will let real measurements replace the current, endurance and efficiency estimates.'),
     specs: [P('31 × 13 × 15 mm', '31 × 13 × 15 mm'),
-            P('Divisor 10 kΩ / 2,2 kΩ por casco', '10 kΩ / 2.2 kΩ divider per hull'),
+            P('Divisor 10 kΩ / 2 kΩ por casco, por montar', '10 kΩ / 2 kΩ divider per hull, not built yet'),
             P('0 V = casco desarmado', '0 V = hull disarmed')],
     status: 'validated'
   },
@@ -231,10 +239,11 @@ export const PARTS = {
   motor_dir: {
     sub: 'propulsion', qty: 2,
     name: P('Motor brushless 2440 KV4500', '2440 KV4500 brushless motor'),
-    desc: P('Motor brushless de 300 W, sem GND próprio — três fases U, V e W. Habitualmente usado em kits de waterjet para embarcações de 40 a 110 cm, o que coloca o SAILSAFE, com 80 cm, dentro da gama recomendada e na sua zona mais leve.',
-            'A 300 W brushless motor with no ground of its own — three phases, U, V and W. Commonly used in waterjet kits for 40 to 110 cm craft, which puts SAILSAFE, at 80 cm, inside the recommended range and at its lighter end.'),
+    desc: P('Motor brushless de 300 W, sem GND próprio — três fases U, V e W. Habitualmente usado em kits de waterjet para embarcações de 40 a 110 cm, o que coloca o SAILSAFE, com 80 cm, dentro da gama recomendada e na sua zona mais leve. As unidades já chegaram: motor e jato são uma só peça, com 107 g por conjunto na balança — o CAD modela-os separados e assumia 0,69 kg por lado.',
+            'A 300 W brushless motor with no ground of its own — three phases, U, V and W. Commonly used in waterjet kits for 40 to 110 cm craft, which puts SAILSAFE, at 80 cm, inside the recommended range and at its lighter end. The units have arrived: motor and jet are a single part, 107 g per unit on the scale — the CAD models them separately and assumed 0.69 kg per side.'),
     specs: [P('Ø36 × 70 mm · 300 W', 'Ø36 × 70 mm · 300 W'),
             P('7,4–11,1 V (2S–3S)', '7.4–11.1 V (2S–3S)'),
+            P('107 g com o jato (pesado)', '107 g with the jet (weighed)'),
             P('Eixo em y = ±117, z = 40 mm', 'Axis at y = ±117, z = 40 mm')],
     status: 'validated'
   },
@@ -245,6 +254,7 @@ export const PARTS = {
     desc: P('Um ESC por waterjet, instalado junto ao respetivo motor para manter curtos os três cabos de fase. A alimentação vem da distribuição central por dois cabos de 6 mm², acompanhados do sinal PWM e respetivo GND, em conduíte corrugado de 16 mm ao longo da travessa traseira.',
             'One ESC per waterjet, mounted next to its motor to keep the three phase leads short. Power is brought from central distribution by two 6 mm² cables, accompanied by the PWM signal and its ground, in 16 mm corrugated conduit along the aft crossbeam.'),
     specs: [P('80 × 40 × 30 mm · 40 A', '80 × 40 × 30 mm · 40 A'),
+            P('45 g (pesado)', '45 g (weighed)'),
             P('Fusível de ramo 35–40 A', 'Branch fuse 35–40 A')],
     status: 'validated'
   },
@@ -252,12 +262,12 @@ export const PARTS = {
   waterjet_dir: {
     sub: 'propulsion', qty: 2,
     name: P('Unidade waterjet', 'Waterjet unit'),
-    desc: P('Propulsão por jato de água, uma unidade por casco. A manobra combina empuxo diferencial entre os dois lados com um bocal orientável accionado por servo, comandado pelo ESP32 (sinais SRV_E e SRV_D do esquema elétrico). Não existe leme. A autoridade de guinada por diferencial vem do braço de 234 mm entre os dois eixos. O modelo final da unidade está por definir: a geometria aqui representada é um volume de referência, não o componente real, e o servo do bocal ainda não está modelado.',
-            'Waterjet propulsion, one unit per hull. Steering combines differential thrust between the two sides with a servo-actuated steering nozzle driven by the ESP32 (signals SRV_E and SRV_D in the electrical schematic). There is no rudder. Differential yaw authority comes from the 234 mm arm between the two axes. The final unit is still to be selected: the geometry shown is a reference envelope, not the real component, and the nozzle servo is not yet modelled.'),
+    desc: P('Propulsão por jato de água, uma unidade por casco. A manobra combina empuxo diferencial entre os dois lados com um bocal orientável accionado por servo, comandado pelo ESP32 (sinais SRV_E e SRV_D do esquema elétrico). Não existe leme. A autoridade de guinada por diferencial vem do braço de 234 mm entre os dois eixos. As unidades estão em mãos e formam uma só peça com o motor; a geometria aqui representada é anterior à chegada delas — um volume de referência, não o componente real. O firmware ainda só comanda os dois ESCs: as saídas de servo dos bocais estão por escrever.',
+            'Waterjet propulsion, one unit per hull. Steering combines differential thrust between the two sides with a servo-actuated steering nozzle driven by the ESP32 (signals SRV_E and SRV_D in the electrical schematic). There is no rudder. Differential yaw authority comes from the 234 mm arm between the two axes. The units are in hand and form a single part with the motor; the geometry shown predates their arrival — a reference envelope, not the real component. The firmware still drives only the two ESCs: the nozzle servo outputs are yet to be written.'),
     specs: [P('Ø24 × 95 mm (volume de referência)', 'Ø24 × 95 mm (reference envelope)'),
             P('Ultrapassa o espelho em 15 mm', 'Extends 15 mm past the transom'),
             P('Bocal orientável por servo', 'Servo-actuated steering nozzle'),
-            P('Modelo final por definir', 'Final unit to be selected')],
+            P('Em mãos; por ensaiar em bancada', 'In hand; bench test pending')],
     status: 'open'
   },
   waterjet_esq: { alias: 'waterjet_dir' },
@@ -287,31 +297,35 @@ export const SPECS = [
   { g:'dim', k:P('Boca de cada casco','Beam per hull'), v:'116 mm', s:'validated' },
   { g:'dim', k:P('Túnel entre cascos','Tunnel between hulls'), v:'118 mm', s:'validated' },
   { g:'dim', k:P('Distância entre eixos de propulsão','Propulsion axis spacing'), v:'234 mm', s:'validated' },
-  { g:'dim', k:P('Relação L/B por casco','Hull L/B ratio'), v:'6,90', s:'validated' },
+  { g:'dim', k:P('Relação L/B por casco','Hull L/B ratio'), v:P('6,90','6.90'), s:'validated' },
 
-  { g:'mass', k:P('Massa estimada','Estimated mass'), v:'6,0–6,5 kg', s:'estimated' },
-  { g:'mass', k:P('Meta de massa otimizada','Optimised mass target'), v:'≈5,0 kg', s:'estimated' },
-  { g:'mass', k:P('Centro de gravidade (z)','Centre of gravity (z)'), v:'≈107 mm', s:'estimated' },
-  { g:'mass', k:P('Área de flutuação','Waterplane area'), v:'0,1624 m²', s:'derived' },
-  { g:'mass', k:P('Calado a 6,2 kg','Draft at 6.2 kg'), v:'≈38 mm', s:'derived' },
-  { g:'mass', k:P('Bordo livre a 6,2 kg','Freeboard at 6.2 kg'), v:'≈108 mm', s:'derived' },
+  { g:'mass', k:P('Componentes, sem a estrutura','Components, without the structure'), v:P('≈2,0 kg (pesados)','≈2.0 kg (weighed)'), s:'validated' },
+  { g:'mass', k:P('Estrutura','Structure'), v:P('3,3–8,4 kg, por pesar','3.3–8.4 kg, not yet weighed'), s:'estimated' },
+  { g:'mass', k:P('Massa total','Total mass'), v:P('5,3–10,4 kg','5.3–10.4 kg'), s:'estimated' },
+  { g:'mass', k:P('Área de flutuação','Waterplane area'), v:P('0,1624 m²','0.1624 m²'), s:'derived' },
+  { g:'mass', k:P('Calado','Draft'), v:'33–65 mm', s:'derived' },
+  { g:'mass', k:P('Bordo livre','Freeboard'), v:'81–113 mm', s:'derived' },
+  { g:'mass', k:P('Fundo dos alojamentos das baterias','Battery bay floor'), v:P('z = 80 mm (decidido; CAD ainda a 45)','z = 80 mm (decided; CAD still at 45)'), s:'derived' },
+  { g:'mass', k:P('Centro de gravidade','Centre of gravity'), v:P('A recalcular com as massas medidas','To be recomputed from measured masses'), s:'open' },
 
   { g:'prop', k:P('Configuração','Configuration'), v:'2 × waterjet', s:'validated' },
   { g:'prop', k:P('Motores','Motors'), v:'2 × 2440 KV4500 · 300 W', s:'validated' },
   { g:'prop', k:P('ESCs','ESCs'), v:'2 × 40 A', s:'validated' },
   { g:'prop', k:P('Manobra','Steering'), v:P('Diferencial + bocal por servo','Differential + servo nozzle'), s:'open' },
   { g:'prop', k:P('Potência combinada','Combined power'), v:'600 W', s:'validated' },
-  { g:'prop', k:P('Rácio potência/peso','Power-to-weight'), v:'≈97 W/kg', s:'estimated' },
+  { g:'prop', k:P('Conjunto motor + waterjet','Motor + waterjet unit'), v:P('107 g cada (pesado)','107 g each (weighed)'), s:'validated' },
+  { g:'prop', k:P('Rácio potência/peso','Power-to-weight'), v:'≈58–113 W/kg', s:'estimated' },
   { g:'prop', k:P('Impulso estático estimado','Estimated static thrust'), v:'2–3 kgf', s:'estimated' },
-  { g:'prop', k:P('Velocidade estimada','Estimated speed'), v:'≈2 m/s', s:'estimated' },
+  { g:'prop', k:P('Velocidade estimada a fundo','Estimated top speed'), v:P('1,5–2 m/s','1.5–2 m/s'), s:'estimated' },
+  { g:'prop', k:P('Velocidade ao teto de 30 %','Speed at the 30 % ceiling'), v:P('≈0,5 m/s','≈0.5 m/s'), s:'estimated' },
   { g:'prop', k:P('Regime de navegação','Operating regime'), v:P('Deslocamento','Displacement'), s:'validated' },
 
   { g:'elec', k:P('Baterias de propulsão','Propulsion batteries'), v:'2 × LiPo 3S 5000 mAh', s:'validated' },
   { g:'elec', k:P('Bateria de eletrónica','Electronics battery'), v:'1 × LiPo 3S 2200 mAh', s:'validated' },
   { g:'elec', k:P('Arquitetura elétrica','Electrical architecture'), v:P('3 circuitos independentes','3 independent circuits'), s:'validated' },
-  { g:'elec', k:P('Tensão de propulsão','Propulsion voltage'), v:'11,1 V (3S)', s:'validated' },
-  { g:'elec', k:P('Tensão da eletrónica','Electronics voltage'), v:'11,1 V (3S)', s:'validated' },
-  { g:'elec', k:P('Fusível por casco','Fuse per hull'), v:'40 A', s:'validated' },
+  { g:'elec', k:P('Tensão de propulsão','Propulsion voltage'), v:P('11,1 V (3S)','11.1 V (3S)'), s:'validated' },
+  { g:'elec', k:P('Tensão da eletrónica','Electronics voltage'), v:P('11,1 V (3S)','11.1 V (3S)'), s:'validated' },
+  { g:'elec', k:P('Fusível por casco','Fuse per hull'), v:P('30 A em bancada · valor final por decidir','30 A on the bench · final value open'), s:'open' },
   { g:'elec', k:P('Fusível da eletrónica','Electronics fuse'), v:'10 A', s:'validated' },
   { g:'elec', k:P('Corte de emergência','Emergency cut-off'), v:P('Loop key XT90-S por casco','XT90-S loop key per hull'), s:'validated' },
   { g:'elec', k:P('Potência a atravessar a ponte','Power crossing the bridge'), v:P('Nenhuma — só sinais','None — signals only'), s:'validated' },
@@ -326,12 +340,15 @@ export const SPECS = [
   { g:'ctrl', k:P('Saídas do ESP32','ESP32 outputs'), v:P('2 × PWM + 2 × servo','2 × PWM + 2 × servo'), s:'validated' },
   { g:'ctrl', k:P('Protocolo de comando','Command protocol'), v:'L:&lt;%&gt; R:&lt;%&gt;', s:'validated' },
   { g:'ctrl', k:P('Heartbeat','Heartbeat'), v:'5 Hz (200 ms)', s:'validated' },
-  { g:'ctrl', k:P('Timeout de failsafe','Failsafe timeout'), v:'≈1,1 s', s:'validated' },
+  { g:'ctrl', k:P('Timeout de failsafe','Failsafe timeout'), v:P('≈1,1 s','≈1.1 s'), s:'validated' },
   { g:'ctrl', k:P('Teto de potência em ensaio','Test power ceiling'), v:'30 %', s:'validated' },
   { g:'ctrl', k:P('Trava de propulsão','Propulsion latch'), v:P('Abre só com L: 0 R: 0','Opens only on L: 0 R: 0'), s:'validated' },
   { g:'ctrl', k:P('GPS','GPS'), v:'NEO-8M', s:'validated' },
-  { g:'ctrl', k:P('Ligação do GPS','GPS wiring'), v:P('UART do GPIO · 9600 baud','GPIO UART · 9600 baud'), s:'estimated' },
+  { g:'ctrl', k:P('Ligação do GPS','GPS wiring'), v:P('UART do GPIO · 9600 baud','GPIO UART · 9600 baud'), s:'validated' },
+  { g:'ctrl', k:P('Dispersão do GPS (parapeito, meio céu tapado)','GPS scatter (window sill, half the sky blocked)'), v:P('≈30 cm em 10 s · 31 × 4 m em 10 min','≈30 cm over 10 s · 31 × 4 m over 10 min'), s:'validated' },
+  { g:'ctrl', k:P('Raio de chegada ao waypoint','Waypoint arrival radius'), v:P('4 m, a rever em água aberta','4 m, to be revisited on open water'), s:'estimated' },
   { g:'ctrl', k:P('IMU','IMU'), v:'BNO055', s:'validated' },
+  { g:'ctrl', k:P('Rumo em repouso (bancada)','Heading at rest (bench)'), v:'≈1°', s:'validated' },
   { g:'ctrl', k:P('ADC','ADC'), v:P('ADS1015 (12-bit) · FSR ±4,096 V','ADS1015 (12-bit) · ±4.096 V FSR'), s:'validated' }
 ];
 

@@ -25,7 +25,7 @@ Phase 1 — software MVP validated in simulation, GPS integrated and validated o
 ## Current Status
 - Raspberry Pi ↔ ESP32 command chain validated on the bench (USB serial, text protocol `L: x R: y`)
 - State machine DISARMED ↔ ARMED / NAV with 5 Hz heartbeat; ESP32-side failsafe (~1 s timeout) confirmed with real hardware
-- Heading hold (proportional controller) and waypoint navigation (haversine + bearing) validated in closed-loop simulation
+- Heading hold (proportional controller, with turn-direction hysteresis near ±180°) and waypoint navigation (haversine + bearing) validated in closed-loop simulation
 - STOP retried until acknowledged by the ESP32; ARM/NAV refuse without proof the latch opened
 - Control path independent of an interactive terminal (FIFO + `SIGUSR1`), so the process is
   commandable under systemd or `nohup`
@@ -83,8 +83,8 @@ Phase 1 — software MVP validated in simulation, GPS integrated and validated o
    goes in. 30 A fuse, provided the holder's pigtail really is 14 AWG copper (not CCA);
    check polarity with a meter first. Check rotation direction and mark the phase order.
    First run of the latch, failsafe, ceiling and STOP against real actuators. Measuring
-   current needs longer pulses with a heartbeat — a `tools/motor_bench.py` that does not
-   exist yet.
+   current needs longer pulses with a heartbeat — `tools/motor_bench.py`, written on
+   11 Nov and so far only run against a fake ESP32.
 2. **Thrust test in a tub**, jet submerged so the cooling loop primes, pulling on a spring
    scale. Replaces the speed estimate with a number.
 3. **Weigh the structure** — a 3 mm okoumé offcut of known area, and the XPS. Then correct
@@ -104,7 +104,9 @@ offset and declination. Blocked, nothing to do: remote kill switch (budget).
 
 Open items: OPEN-014 (dead reckoning as observer, never actuator), OPEN-015 (bilge water
 sensor per hull — the cooling loop puts pressurised water inside the hull), OPEN-016
-(blueprint has no generator in the repo).
+(blueprint has no generator in the repo), OPEN-017 (tying the BNO055 calibration file to
+the mounting), OPEN-018 (helm flipping sides at ±180° — hysteresis written and tested on
+11 Nov, 15° band unmeasured, to be confirmed on the bench with the real sensor).
 
 ## Safety Design
 - Boot always in a safe (DISARMED) state; STOP has absolute priority
@@ -201,6 +203,8 @@ pip install smbus2 pyserial adafruit-circuitpython-bno055 --break-system-package
 python3 software/raspberry_pi/tests/test_heading.py
 python3 software/raspberry_pi/tests/test_mixer.py
 python3 software/raspberry_pi/tests/test_navigation.py
+python3 software/raspberry_pi/tests/test_nav_mode.py
+python3 software/raspberry_pi/tests/test_motor_bench.py
 
 python3 software/raspberry_pi/tests/test_real_heading.py
 python3 software/raspberry_pi/tests/test_stop_confirmado.py
@@ -224,7 +228,7 @@ python3 software/raspberry_pi/main.py --sim         # NAV in simulation, no prop
 python3 software/raspberry_pi/main.py --sim-motores # NAV in simulation, motors DO run
 ```
 
-197 Python tests and 182 C++ checks, none of which need hardware.
+228 Python tests and 182 C++ checks, none of which need hardware.
 
 There is also an end-to-end rehearsal of the whole process against fake serial
 hardware — two pseudo-terminals, one feeding NMEA as the NEO-8M, the other
@@ -252,6 +256,24 @@ python3 -m tools.gps_bench --cru          # shows every frame, and whether it pa
 ```
 
 Drop `--fake` for the real sensor.
+
+`motor_bench` is the exception to "sends nothing to the ESP32": it is the tool for
+pulses longer than the 1 s a hand-typed command gets before the failsafe ends it.
+
+```bash
+python3 -m tools.motor_bench --fake --submerso --lado e --pct 10 --dur 3   # rehearsal
+python3 -m tools.motor_bench --seco --lado e --pct 10 --dur 1              # rotation check
+python3 -m tools.motor_bench --submerso --lado ambos --pct 20 --dur 10     # jet in a tub
+```
+
+It opens the latch with a confirmed STOP, ramps to the requested percentage, repeats
+the command at 5 Hz, and always ends in a confirmed STOP — on time-out, Ctrl-C, a
+refusal from the ESP32 or an exception. `--seco` (jet out of the water) is capped at
+10 % and 1 s; one of `--seco` / `--submerso` must always be declared. It measures no
+current: the reading is the wattmeter's, typed in afterwards so it lands in the session
+log next to the pulse that produced it. **Tested against a fake ESP32 only — it has
+never run against the board or an ESC**, and it does not make OPEN-019 less urgent: a
+hung ESP32 is stopped by the loop key, not by this script.
 
 The BNO055 forgets its calibration whenever it loses power.
 `heading_bench --guardar-cal` writes the offsets to `config/bno055_calibration.json`

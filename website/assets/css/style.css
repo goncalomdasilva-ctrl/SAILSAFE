@@ -258,8 +258,12 @@ td:last-child{text-align:right;width:1%}
 /* ---------- código ---------- */
 .code{font-family:var(--mono);font-size:12.6px;background:var(--studio);
   border:1px solid var(--studio2);border-radius:10px;padding:17px 19px;color:#8FE3B7;
-  overflow-x:auto;line-height:1.8;margin-top:8px}
+  overflow-x:auto;line-height:1.8;margin-top:8px;white-space:pre}
+/* white-space:pre faltava: sem ele as linhas do protocolo corriam todas
+   seguidas num parágrafo só, e o overflow-x acima não tinha o que deslizar. */
 .code .c{color:#6E7A85}
+.stamp{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--mut2);margin:-28px 0 32px}
 
 /* ---------- rodapé ---------- */
 footer{border-top:1px solid var(--line);padding:50px 0 60px;background:var(--bg2)}
@@ -336,7 +340,9 @@ footer .meta{font-family:var(--mono);font-size:11px;color:var(--mut2);letter-spa
   .cards,.grid2,.statusCols{grid-template-columns:1fr}
   .card{padding:18px}
   .archWrap{padding:16px 10px}
-  .archScroll svg{min-width:560px}
+  /* 760 px e não 560: a 560 as legendas de 11 unidades ficavam com ~6 px
+     reais, ilegíveis. O diagrama desliza de lado dentro da moldura. */
+  .archScroll svg{min-width:760px}
 
   .specTabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
   .specTabs button{flex:none;white-space:nowrap}
@@ -383,11 +389,16 @@ footer .meta{font-family:var(--mono);font-size:11px;color:var(--mut2);letter-spa
   .spot b{display:none}
   .spot i{width:34px;height:34px}
   .jReset{right:14px;bottom:16px;padding:9px 15px}
-  .dragHint{bottom:64px;font-size:9.5px}
+  /* A dica sobe para debaixo do cabeçalho. Em baixo ficava a 64 px do fundo,
+     ou seja, dentro do parágrafo do capítulo, que cresce de baixo para cima:
+     duas linhas de texto impressas uma sobre a outra em três dos capítulos. */
+  .dragHint{top:72px;bottom:auto;font-size:9.5px;width:max-content;max-width:calc(100% - 36px)}
 
   /* assenta acima dos controlos, nunca por baixo deles */
+  /* 62 px: o botão «repor vista» ocupa dos 16 aos 51 px do fundo, e com 42
+     a última linha do texto passava por baixo dele. */
   .beat{left:18px;right:18px;max-width:none;top:auto;
-    bottom:calc(42px + env(safe-area-inset-bottom,0px));transform:translateY(10px)}
+    bottom:calc(62px + env(safe-area-inset-bottom,0px));transform:translateY(10px)}
   .beat.on{transform:translateY(0)}
   .beat h1{font-size:clamp(2.7rem,14vw,4.2rem);margin-bottom:12px}
   .beat h2{font-size:clamp(1.7rem,7.5vw,2.3rem)}

@@ -19,7 +19,7 @@ export const T = {
   ],
   'hero.scroll':  ['Explorar', 'Explore'],
   'j.reset':      ['Repor vista', 'Reset view'],
-  'j.drag':       ['Arrasta para olhar à volta · desliza a página para avançar', 'Drag to look around · scroll the page to move on'],
+  'j.drag':       ['Arrasta para olhar à volta · desliza para avançar', 'Drag to look around · scroll to move on'],
   'b4.k': ['04 — Interior', '04 — Inside'],
   'b4.t': ['Dentro da caixa', 'Inside the enclosure'],
   'b4.b': [
@@ -32,14 +32,14 @@ export const T = {
   'b1.k': ['01 — Propulsão', '01 — Propulsion'],
   'b1.t': ['Dois jatos, sem leme', 'Two jets, no rudder'],
   'b1.b': [
-    'Cada casco leva o seu waterjet, o seu motor de 300 W e o seu ESC. A viragem faz-se pela diferença de potência entre os dois lados, com o braço de 234 mm entre eixos a dar a autoridade de guinada, e por um bocal orientável por servo em cada unidade.',
-    'Each hull carries its own waterjet, its own 300 W motor and its own ESC. Turning comes from the power difference between the two sides, with the 234 mm arm between axes providing yaw authority, plus a servo-actuated steering nozzle on each unit.'
+    'Cada casco leva o seu ESC e o seu conjunto motor-waterjet, uma só peça de 107 g. A viragem faz-se pela diferença de potência entre os dois lados, com o braço de 234 mm entre eixos a dar a autoridade de guinada, e por um bocal orientável por servo em cada unidade.',
+    'Each hull carries its own ESC and its own motor-waterjet unit, a single 107 g part. Turning comes from the power difference between the two sides, with the 234 mm arm between axes providing yaw authority, plus a servo-actuated steering nozzle on each unit.'
   ],
   'b2.k': ['02 — Flutuação', '02 — Flotation'],
-  'b2.t': ['38 mm de calado', '38 mm of draft'],
+  'b2.t': ['33 a 65 mm de calado', '33 to 65 mm of draft'],
   'b2.b': [
-    'A 6,2 kg o casco mergulha 38 mm e deixa 108 mm de bordo livre. Com as duas baterias alojadas dentro dos cascos, o centro de gravidade fica a 107 mm — e a distância entre flutuadores torna a plataforma quase impossível de inclinar.',
-    'At 6.2 kg the hull sits 38 mm deep and leaves 108 mm of freeboard. With both batteries housed inside the hulls, the centre of gravity drops to 107 mm — and the spacing between floats makes the platform almost impossible to heel.'
+    'Os componentes já foram pesados: 2,0 kg, contra 3,2 kg no CAD. A estrutura ainda não, e por isso a massa total fica entre 5,3 e 10,4 kg e a linha de água entre 33 e 65 mm. O fundo dos alojamentos das baterias subiu para 80 mm, seco nas duas pontas do intervalo.',
+    'The components have been weighed: 2.0 kg, against 3.2 kg in the CAD. The structure has not, so total mass sits between 5.3 and 10.4 kg and the waterline between 33 and 65 mm. The battery bay floors were raised to 80 mm, dry at both ends of that range.'
   ],
   'b3.k': ['03 — Autonomia', '03 — Autonomy'],
   'b3.t': ['Decide e protege-se', 'It decides, and it protects itself'],
@@ -66,7 +66,7 @@ export const T = {
   'v.bow':        ['Proa', 'Bow'],
   'v.stern':      ['Popa', 'Stern'],
   'v.xray':       ['Ver interior', 'See inside'],
-  'v.waterline':  ['Linha de água', 'Waterline'],
+  'v.waterline':  ['Linha de água (6,2 kg)', 'Waterline (6.2 kg)'],
   'v.section':    ['Corte longitudinal', 'Longitudinal section'],
   'v.explode':    ['Vista explodida', 'Exploded view'],
   'v.colormode':  ['Cor por subsistema', 'Colour by subsystem'],
@@ -80,7 +80,7 @@ export const T = {
   'v.qty':        ['Quantidade', 'Quantity'],
   'v.dims':       ['Envolvente', 'Bounding box'],
   'v.close':      ['Fechar', 'Close'],
-  'v.wlnote':     ['Calado derivado para 6,2 kg', 'Draft derived for 6.2 kg'],
+  'v.wlnote':     ['Calado de referência a 6,2 kg (intervalo real: 33–65 mm)', 'Reference draft at 6.2 kg (actual range: 33–65 mm)'],
 
   /* ---------- estados ---------- */
   'st.validated': ['Validado', 'Validated'],
@@ -99,19 +99,20 @@ export const T = {
     'The architecture deliberately separates high-level logic from low-latency control. The Raspberry Pi decides where to go; the ESP32 guarantees the motors stop when something goes wrong. That split exists so operating-system latency never reaches the ESCs.'
   ],
   'a.op':     ['Operador', 'Operator'],
-  'a.oplink': ['Wi-Fi · interface web', 'Wi-Fi · web interface'],
+  'a.oplink': ['Wi-Fi · SSH', 'Wi-Fi · SSH'],
   'a.pi':     ['Raspberry Pi 4', 'Raspberry Pi 4'],
   'a.pirole': ['Computador de bordo', 'On-board computer'],
   'a.pitasks':['Navegação · GPS · IMU · ADC · waypoints · logging', 'Navigation · GPS · IMU · ADC · waypoints · logging'],
   'a.link':   ['USB-C serial · heartbeat 5 Hz', 'USB-C serial · 5 Hz heartbeat'],
   'a.esp':    ['ESP32', 'ESP32'],
   'a.esprole':['Controlo de tempo real', 'Real-time control'],
-  'a.esptasks':['Validação · PWM · watchdog · failsafe', 'Validation · PWM · watchdog · failsafe'],
+  'a.esptasks':['Validação · PWM · failsafe por timeout · trava', 'Validation · PWM · timeout failsafe · latch'],
   'a.escL':   ['ESC esquerdo', 'Left ESC'],
   'a.escR':   ['ESC direito', 'Right ESC'],
   'a.wjL':    ['Waterjet esquerdo', 'Left waterjet'],
   'a.wjR':    ['Waterjet direito', 'Right waterjet'],
   'a.sensors':['Sensores', 'Sensors'],
+  'a.sensorlink':['UART · I2C', 'UART · I2C'],
   'a.why':    ['Porquê dois controladores?', 'Why two controllers?'],
   'a.whybody': [
     'O Raspberry Pi corre Linux, e Linux não dá garantias de tempo real. Se o escalonador atrasar um ciclo, um sinal PWM gerado diretamente pelo Pi pode ficar num estado indefinido com os motores a rodar. O ESP32 resolve isto: recebe uma intenção em percentagem, valida-a, e se deixar de receber comandos válidos durante ≈1,1 s corta os motores sozinho, independentemente do que o Pi esteja a fazer.',
@@ -153,8 +154,8 @@ export const T = {
   /* ---------- especificações ---------- */
   'sp.title': ['Especificações', 'Specifications'],
   'sp.lead': [
-    'Cada valor está marcado com a sua origem. Os componentes de propulsão ainda não chegaram fisicamente ao projeto, pelo que nenhum número de desempenho é ainda uma medição.',
-    'Every value is tagged with its provenance. The propulsion components have not physically arrived yet, so no performance figure here is a measurement.'
+    'Cada valor está marcado com a sua origem. Os motores e os ESCs já estão em mãos e pesados, mas ainda não giraram: nenhum número de desempenho é ainda uma medição.',
+    'Every value is tagged with its provenance. The motors and ESCs are in hand and weighed, but have not spun yet: no performance figure here is a measurement.'
   ],
 
   /* ---------- segurança ---------- */
@@ -172,9 +173,9 @@ export const T = {
   'sf.3.t': ['Corte manual', 'Manual cut-off'],
   'sf.3.b': ['Loop key XT90-S em cada casco, mais interruptor estanque no circuito da eletrónica. Sem chave inserida, aquele casco não tem alimentação — e o sinal de sense, ligado a jusante da chave, lê 0 V e reporta o ramo como desarmado.',
              'An XT90-S loop key in each hull, plus a sealed switch on the electronics circuit. With no key inserted that hull has no power — and the sense signal, tapped downstream of the key, reads 0 V and reports the branch as disarmed.'],
-  'sf.4.t': ['Sem fix de GPS', 'No GPS fix'],
-  'sf.4.b': ['O sistema não inicia navegação autónoma sem posição válida.',
-             'The system will not start autonomous navigation without a valid position.'],
+  'sf.4.t': ['Sem posição, sem missão', 'No position, no mission'],
+  'sf.4.b': ['Com GPS, o ARM é recusado enquanto o ponto de regresso não estiver gravado a partir de fixes validados. Perder a posição em NAV põe a propulsão a zero e, passados cerca de 3 s, aborta a missão. Recuperar o fix não a recomeça: é preciso armar outra vez, de propósito.',
+             'With GPS, ARM is refused until the return point has been recorded from validated fixes. Losing position in NAV drops propulsion to zero and, after about 3 s, aborts the mission. Getting the fix back does not restart it: the boat has to be armed again, on purpose.'],
   'sf.5.t': ['Arranque em DISARMED', 'Boot in DISARMED'],
   'sf.5.b': ['O sistema arranca sempre desarmado. A perda e o regresso da ligação série nunca rearmam sozinhos.',
              'The system always boots disarmed. Losing and regaining the serial link never re-arms on its own.'],
@@ -184,6 +185,9 @@ export const T = {
   'sf.7.t': ['STOP confirmado', 'Confirmed STOP'],
   'sf.7.b': ['O STOP é repetido até o ESP32 responder, com o buffer de entrada drenado primeiro — em ARMED há sempre respostas antigas por ler, e aceitar uma delas dava a garantia sem o facto. O orçamento inteiro (~0,24 s) cabe dentro do timeout de 1 s do failsafe, para as duas proteções se encadearem em vez de competirem. Um STOP não confirmado é ruidoso e fica registado, mas nunca é bloqueado: uma paragem que só vale se o outro lado responder não é uma paragem, é um pedido.',
              'STOP is retried until the ESP32 answers, with the input buffer drained first — in ARMED there are always stale replies waiting, and accepting one gave the guarantee without the fact. The whole budget (~0.24 s) fits inside the 1 s failsafe timeout, so the two protections chain instead of competing. An unconfirmed STOP is loud and logged, but never blocked: a stop that only counts if the other side answers is not a stop, it is a request.'],
+  'sf.8.t': ['Trava de propulsão', 'Propulsion latch'],
+  'sf.8.b': ['O failsafe não se limita a parar os motores: tranca a propulsão, e a tranca só abre com um L: 0 R: 0 explícito. O sistema arranca trancado, e nenhum caminho leva de «parado por falha» a «a andar» sem passar por zero — um Raspberry Pi que reinicie e volte a falar não põe nada a girar.',
+             'The failsafe does not merely stop the motors: it locks propulsion, and the lock only opens on an explicit L: 0 R: 0. The system boots locked, and no path leads from “stopped by failure” back to “running” without passing through zero — a Raspberry Pi that reboots and starts talking again spins nothing.'],
 
   'sf.open.t': ['Kill-switch remoto: arquitetura fechada, por montar', 'Remote kill-switch: architecture closed, not yet built'],
   'sf.open.b': [
@@ -204,24 +208,29 @@ export const T = {
   'sw.2.b': ['DISARMED ↔ ARMED / NAV. Arranque sempre em DISARMED, heartbeat 0/0 a 5 Hz quando armado, STOP com prioridade absoluta. ARM e NAV só avançam com confirmação do ESP32 de que a trava de propulsão abriu — sem ela o sistema fica DISARMED e o motivo é escrito.',
              'DISARMED ↔ ARMED / NAV. Always boots disarmed, 0/0 heartbeat at 5 Hz when armed, STOP with absolute priority. ARM and NAV only proceed once the ESP32 confirms the propulsion latch opened — without that the system stays DISARMED and the reason is written down.'],
   'sw.3.t': ['Heading hold', 'Heading hold'],
-  'sw.3.b': ['Normalização do erro angular para (−180°, 180°] e controlador proporcional com saturação. O mixer converte throttle e steer em L/R com teto de 30 %.',
-             'Angular error normalised to (−180°, 180°] and a proportional controller with saturation. The mixer converts throttle and steer into L/R with a 30 % ceiling.'],
+  'sw.3.b': ['Normalização do erro angular para (−180°, 180°] e controlador proporcional com saturação. Perto dos ±180° o sentido de rotação fica comprometido, para o leme não trocar de lado a cada leitura — defeito visto na bancada com o primeiro rumo real. O mixer converte throttle e steer em L/R com teto de 30 %.',
+             'Angular error normalised to (−180°, 180°] and a proportional controller with saturation. Near ±180° the turn direction is held, so the helm does not flip sides on every reading — a defect seen on the bench with the first real heading. The mixer converts throttle and steer into L/R with a 30 % ceiling.'],
   'sw.4.t': ['Navegação por waypoints', 'Waypoint navigation'],
   'sw.4.b': ['Haversine, bearing e raio de chegada. Validada em ciclo fechado sintético no PC e no Raspberry Pi.',
              'Haversine, bearing and arrival radius. Validated in synthetic closed loop on both PC and Raspberry Pi.'],
   'sw.5.t': ['Telemetria', 'Telemetry'],
-  'sw.5.b': ['Um CSV por sessão, timestamp ao milissegundo e flush imediato. Eventos BOOT, SERIAL, STATE, TX, RX, STOP, HEADING e SHUTDOWN.',
-             'One CSV per session, millisecond timestamps and immediate flush. BOOT, SERIAL, STATE, TX, RX, STOP, HEADING and SHUTDOWN events.'],
+  'sw.5.b': ['Um CSV por sessão, timestamp ao milissegundo e flush imediato. Com GPS, a posição fica registada em todos os estados, com satélites, HDOP e idade do fix — uma sessão de bancada qualquer deixa dados de dispersão.',
+             'One CSV per session, millisecond timestamps and immediate flush. With GPS, position is logged in every state, with satellites, HDOP and fix age — any ordinary bench session leaves dispersion data behind.'],
   'sw.6.t': ['Testes automáticos', 'Automated tests'],
-  'sw.6.b': ['149 testes em Python e 182 verificações em C++, nenhum a precisar de hardware, para que a lógica possa evoluir sem o barco montado. O firmware é compilado pelo arduino-cli e, entre sessões de bancada, por um verificador contra cabeçalhos falsos do Arduino.',
-             '149 Python tests and 182 C++ checks, none of which need hardware, so the logic can evolve without the boat assembled. The firmware is compiled by arduino-cli and, between bench sessions, by a checker against stub Arduino headers.'],
+  'sw.6.b': ['228 testes em Python e 182 verificações em C++, nenhum a precisar de hardware, para que a lógica possa evoluir sem o barco montado. Um ensaio de ponta a ponta corre o processo inteiro contra um GPS e um ESP32 falsos. O firmware é compilado pelo arduino-cli e, entre sessões de bancada, por um verificador contra cabeçalhos falsos do Arduino.',
+             '228 Python tests and 182 C++ checks, none of which need hardware, so the logic can evolve without the boat assembled. An end-to-end rehearsal runs the whole process against a fake GPS and a fake ESP32. The firmware is compiled by arduino-cli and, between bench sessions, by a checker against stub Arduino headers.'],
   'sw.7.t': ['Sensores reais', 'Real sensors'],
-  'sw.7.b': ['Leitores de IMU, GPS e ADC escritos com a mesma interface das fontes simuladas e a mesma regra: perante dúvida, não devolvem número. Sem calibração, sem fix ou com o canal em falta, levantam em vez de inventar. Nenhum viu ainda o seu sensor.',
-             'IMU, GPS and ADC readers written with the same interface as the simulated sources and the same rule: in doubt, return no number. Uncalibrated, without a fix or with the channel missing, they raise instead of inventing. None has met its sensor yet.'],
+  'sw.7.b': ['Leitores de IMU, GPS e ADC escritos com a mesma interface das fontes simuladas e a mesma regra: perante dúvida, não devolvem número. Sem calibração, sem fix ou com o canal em falta, levantam em vez de inventar. O GPS está validado em hardware e integrado no processo principal. O BNO055 deu o primeiro rumo real a 10 de novembro, ainda fora do processo principal. O ADS1015 responde no barramento; os divisores de tensão estão por montar.',
+             'IMU, GPS and ADC readers written with the same interface as the simulated sources and the same rule: in doubt, return no number. Uncalibrated, without a fix or with the channel missing, they raise instead of inventing. The GPS is validated on hardware and integrated into the main process. The BNO055 gave its first real heading on 10 November, still outside the main process. The ADS1015 answers on the bus; the voltage dividers are not built yet.'],
   'sw.8.t': ['Comando sem terminal', 'Commanding without a terminal'],
   'sw.8.b': ['Teclado quando há tty, um FIFO de controlo e SIGUSR1. O canal com menos capacidade — um sinal, sem argumentos e sem resposta — é o que leva o STOP, porque é o único que não pode faltar. Sem tty e sem FIFO o barco não arma: fica inerte, que é o lado seguro de falhar.',
              'Keyboard when a tty exists, a control FIFO and SIGUSR1. The channel with the least capability — a signal, no arguments, no reply — is the one that carries STOP, because it is the only one that cannot be missing. Without a tty and without a FIFO the boat cannot arm: it stays inert, which is the safe direction to fail in.'],
   'sw.proto': ['Protocolo de comando', 'Command protocol'],
+  'sw.proto.stop':  ['→ para, e é o único comando que abre a trava', '→ stop, and the only command that opens the latch'],
+  'sw.proto.both':  ['→ ambos os lados a 10 %', '→ both sides at 10 %'],
+  'sw.proto.diff':  ['→ mais impulso à esquerda: o barco vira a estibordo', '→ more thrust on the left: the boat turns to starboard'],
+  'sw.proto.over':  ['→ recusado pelo firmware (teto de 30 %), motores parados', '→ refused by the firmware (30 % ceiling), motors stopped'],
+  'sw.proto.steer': ['steer > 0 = estibordo', 'steer > 0 = starboard'],
 
   /* ---------- estado ---------- */
   'stt.title': ['Estado do projeto', 'Project status'],
@@ -240,14 +249,22 @@ export const T = {
   'stt.d6': ['Arquitetura mecânica v6.1 validada em 3D', 'Mechanical architecture v6.1 validated in 3D'],
   'stt.d7': ['Trava de propulsão no ESP32: a resposta que a destranca foi observada em bancada', 'Propulsion latch on the ESP32: the reply that unlocks it was observed on the bench'],
   'stt.d8': ['Firmware compilado pelo arduino-cli e gravado na placa', 'Firmware compiled by arduino-cli and flashed to the board'],
-  'stt.w1': ['Massa: 6,0–6,5 kg por cálculo de volumes, nunca pesada', 'Mass: 6.0–6.5 kg from volume calculations, never weighed'],
+  'stt.d9': ['GPS NEO-8M validado em hardware: 2 600 tramas sem um checksum mau, fix com 8 satélites e HDOP 1,05', 'NEO-8M GPS validated on hardware: 2,600 frames without a single bad checksum, fix with 8 satellites and HDOP 1.05'],
+  'stt.d10': ['Primeiro rumo real do BNO055 (10 nov.): calibração completa, estável a cerca de 1° em repouso', 'First real BNO055 heading (10 Nov): full calibration, steady to about 1° at rest'],
+  'stt.d11': ['Componentes pesados: cerca de 2,0 kg sem a estrutura, contra 3,2 kg assumidos pelo CAD', 'Components weighed: about 2.0 kg without the structure, against 3.2 kg assumed by the CAD'],
+  'stt.w1': ['Massa total entre 5,3 e 10,4 kg: os componentes estão pesados, a estrutura não', 'Total mass between 5.3 and 10.4 kg: the components are weighed, the structure is not'],
   'stt.w2': ['Impulso, corrente e autonomia, todos a partir de datasheet', 'Thrust, current and endurance, all from datasheets'],
   'stt.w3': ['Consumo real da eletrónica, ainda por medir — o limiar de regresso depende dele', 'Real electronics consumption, still unmeasured — the return threshold depends on it'],
-  'stt.w4': ['Motores e waterjets ainda não recebidos', 'Motors and waterjets not yet received'],
+  'stt.w4': ['Motores e ESCs em mãos, ainda sem girar — o ensaio de bancada é o passo seguinte', 'Motors and ESCs in hand, not yet spun — the bench test is the next step'],
+  'stt.w5': ['Rumo calibrado com a placa na mão: por refazer no barco, com declinação e offset de montagem por medir', 'Heading calibrated with the board in hand: to be redone on the boat, with declination and mounting offset still unmeasured'],
+  'stt.w6': ['Sense de tensão: código e testes prontos, divisores por montar e calibrar', 'Voltage sensing: code and tests ready, dividers still to be built and calibrated'],
   'stt.o1': ['Sistema de rádio do kill-switch: FlySky FS-i6X + iA6B ou ELRS ER6', 'Kill-switch radio system: FlySky FS-i6X + iA6B or ELRS ER6'],
-  'stt.o2': ['Modelo final das unidades de waterjet', 'Final waterjet unit selection'],
+  'stt.o2': ['Posição dos alojamentos das baterias: depende da pesagem da estrutura, porque o caimento pode trocar de sinal', 'Battery bay position: depends on weighing the structure, because the trim may change sign'],
   'stt.o3': ['Trajeto de Return-To-Home — o gatilho já está decidido, o caminho não', 'Return-to-home path — the trigger is decided, the route is not'],
   'stt.o4': ['Telemetria em tempo real', 'Real-time telemetry'],
+  'stt.o5': ['Watchdog de hardware no ESP32: hoje, um loop() encravado deixaria o último PWM a sair. A fechar antes do ensaio dos motores', 'Hardware watchdog on the ESP32: today a hung loop() would leave the last PWM running. To be closed before the motor bench test'],
+  'stt.o6': ['Amarrar a calibração do magnetómetro à montagem: offsets de outra montagem dariam um rumo plausível e errado', 'Tying the magnetometer calibration to the mounting: offsets from another mounting would give a plausible, wrong heading'],
+  'stt.updated': ['Atualizado a 11 de novembro de 2026', 'Updated 11 November 2026'],
 
   'stt.scope.t': ['Fora de âmbito, por decisão', 'Out of scope, by decision'],
   'stt.scope.b': [
@@ -259,7 +276,7 @@ export const T = {
   'f.project':  ['Projeto pessoal de engenharia', 'Personal engineering project'],
   'f.author':   ['Gonçalo Martins da Silva', 'Gonçalo Martins da Silva'],
   'f.school':   ['Engenharia Eletrotécnica e de Computadores · Instituto Superior Técnico', 'Electrical and Computer Engineering · Instituto Superior Técnico'],
-  'f.docs':     ['Arquitetura v1.13 · esquema elétrico v1.11 · modelo CAD v6.3', 'Architecture v1.13 · electrical schematic v1.11 · CAD model v6.3'],
+  'f.docs':     ['Arquitetura v1.13 · esquema elétrico v1.11 · CAD v6.4 (geometria do site: v6.3)', 'Architecture v1.13 · electrical schematic v1.11 · CAD v6.4 (site geometry: v6.3)'],
   'f.authorship': [
     'Desenho de sistema, hardware e ensaios de bancada do autor; código desenvolvido com assistência de IA e validado por testes automáticos e por medição em bancada. O log de engenharia e as mensagens de commit são também redigidos com assistência de IA, a partir das decisões e medições do autor. O log regista essas decisões e o seu porquê — incluindo as vezes em que uma ferramenta gerada estava errada e foi a bancada a prová-lo.',
     'System design, hardware and bench work by the author; code developed with AI assistance and validated by automated tests and bench measurement. The engineering log and the commit messages are also written with AI assistance, from decisions and measurements made by the author. The log records those decisions and their reasoning — including the times a generated tool was wrong and the bench proved it.'

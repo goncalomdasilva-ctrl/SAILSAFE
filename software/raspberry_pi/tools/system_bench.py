@@ -120,12 +120,27 @@ def main():
         print(f"\n[bench] --- {t} ---", flush=True)
 
     limite = time.time() + 20
-    while time.time() < limite:
+    while time.time() < limite and p.poll() is None:
         if any("Caminhos de comando" in linha for linha in linhas):
             break
         time.sleep(0.2)
     else:
-        print("[bench] o processo nunca anunciou os caminhos de comando")
+        # Sem leitor do outro lado, o open() do FIFO em cmd() bloqueia para
+        # sempre: o ensaio ficava pendurado em vez de falhar. Aconteceu num
+        # PC sem pyserial -- o main.py saiu com "--gps pedido e a porta nao
+        # abriu" e o bench ficou a espera de um processo morto. Um ensaio
+        # que nao termina nao entra em lote nenhum; sai-se com erro.
+        time.sleep(0.3)                    # deixa o leitor despejar o stdout
+        if p.poll() is not None:
+            print(f"[bench] o main.py terminou (codigo {p.returncode}) antes "
+                  f"de anunciar os caminhos de comando. Ver as linhas acima; "
+                  f"a causa habitual e faltar o pyserial neste PC.")
+        else:
+            print("[bench] o processo nunca anunciou os caminhos de comando")
+            p.terminate()
+        if os.path.exists(FIFO):
+            os.unlink(FIFO)
+        sys.exit(1)
     time.sleep(0.5)
 
     marca("1. ARM cedo demais: a janela do regresso ainda nao tem fixes")

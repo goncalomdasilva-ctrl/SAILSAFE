@@ -38,22 +38,17 @@ node build_standalone.mjs
 
 ## Publicar no GitHub Pages
 
-1. Cria um repositório no GitHub e envia o conteúdo desta pasta para a raiz:
+O site vive na pasta `website/` do repositório do projeto e é publicado pelo
+workflow `.github/workflows/deploy-site.yml`, **na raiz do repositório** (não
+dentro de `website/`). Corre a cada `push` para `main` que toque em `website/**`
+e publica a pasta tal como está, sem passo de build.
 
-   ```bash
-   git init
-   git add .
-   git commit -m "SAILSAFE project site"
-   git branch -M main
-   git remote add origin https://github.com/<utilizador>/<repositorio>.git
-   git push -u origin main
-   ```
+Condição única, feita uma vez no GitHub: **Settings → Pages → Build and
+deployment → Source: GitHub Actions**.
 
-2. No GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-
-3. O workflow em `.github/workflows/deploy.yml` publica automaticamente a cada `push` para `main`.
-
-O site fica em `https://<utilizador>.github.io/<repositorio>/`.
+Consequência de não haver build: o que está em `website/` é o que vai para o ar.
+O `assets/sailsafe.glb` tem de estar no repositório, e o `SAILSAFE.html` (o
+ficheiro único) não vai — está no `.gitignore` e gera-se localmente.
 
 > O ficheiro `.nojekyll` está incluído para que o Jekyll não ignore pastas — não o apagues.
 
@@ -63,18 +58,22 @@ O site fica em `https://<utilizador>.github.io/<repositorio>/`.
 
 ```
 .
-├── SAILSAFE.html                 ficheiro único autónomo (duplo clique)
-├── index.html                    versão modular, para GitHub Pages
+├── SAILSAFE.html                 ficheiro único autónomo (duplo clique; não vai para o git)
+├── index.html                    versão modular, a que é publicada
 ├── build_standalone.mjs          gera o SAILSAFE.html
+├── build_model.py                gera o sailsafe.glb a partir do STEP
 ├── serve.bat                     servidor local para Windows
 ├── .nojekyll
-├── .github/workflows/deploy.yml  publicação automática
 └── assets/
-    ├── sailsafe.glb              modelo 3D (41 peças · 6 960 triângulos · 408 kB)
+    ├── sailsafe.glb              modelo 3D (79 malhas · 9 372 triângulos · 609 kB)
+    ├── part_meta.json            subsistema, cor e envolvente de cada peça
     ├── css/style.css
+    ├── img/                      panorâmicas do palco de abertura e imagem de partilha
     ├── js/
     │   ├── app.js                arranque, i18n, construção das secções
+    │   ├── journey.js            palco de abertura: a viagem por capítulos
     │   ├── viewer.js             visualizador three.js
+    │   ├── materials.js          materiais procedurais e ambiente de estúdio
     │   ├── data.js               componentes, especificações, subsistemas
     │   └── i18n.js               textos PT / EN
     └── vendor/three/             three.js r169 (licença MIT incluída)
@@ -104,7 +103,7 @@ Para regenerar o modelo a partir do STEP, ver `build_model.py` (requer `trimesh`
 - Ligar e desligar cada um dos cinco subsistemas
 - Clicar em qualquer peça para ver descrição e especificações
 - Cinco vistas predefinidas (isométrica, topo, lateral, proa, popa)
-- Plano de água ao calado derivado para 6,2 kg
+- Plano de água ao calado de referência de 6,2 kg (o intervalo real, com a estrutura por pesar, é 33–65 mm)
 - Corte longitudinal pelo plano de simetria
 - Vista explodida contínua
 - Modo de cor por material ou por subsistema
@@ -123,7 +122,13 @@ Cada valor apresentado no site está marcado com a sua origem:
 | **Derivado** | Calculado a partir da geometria CAD |
 | **Em aberto** | Decisão por tomar |
 
-Os componentes de propulsão ainda não chegaram fisicamente ao projeto, pelo que nenhum número de desempenho é ainda uma medição em água. Esta separação é mantida deliberadamente.
+Os motores e os ESCs estão em mãos e pesados, mas ainda não giraram: nenhum número de desempenho é ainda uma medição, em bancada ou em água. Esta separação é mantida deliberadamente.
+
+### Manter o site em dia
+
+Os textos estão em `assets/js/i18n.js` e os números em `assets/js/data.js` — sempre aos pares PT/EN. A secção «Estado do projeto» tem uma data (`stt.updated`): mudá-la é o último passo de cada atualização, não o primeiro. O log de 13 de setembro explica porquê: um site atualizado por partes contradiz-se com ar de estar em dia.
+
+A contagem de testes aparece em `sw.6.b` e no README da raiz; são dois sítios para o mesmo número.
 
 ---
 
@@ -132,6 +137,6 @@ Os componentes de propulsão ainda não chegaram fisicamente ao projeto, pelo qu
 Projeto pessoal de engenharia de **Gonçalo Martins da Silva**
 Engenharia Eletrotécnica e de Computadores · Instituto Superior Técnico
 
-Documentação de arquitetura v1.13 · modelo CAD v6.3
+Documentação de arquitetura v1.13 · CAD v6.4 (a geometria do site é a do v6.3)
 
 [three.js](https://threejs.org) r169 — licença MIT, incluída em `assets/vendor/three/LICENSE`.
