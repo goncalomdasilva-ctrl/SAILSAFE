@@ -67,8 +67,14 @@ Phase 1 — software MVP validated in simulation, GPS integrated and validated o
   (`UBX-CFG-RATE`) is the condition for tightening the radius
 
 ## Next steps
-*Updated 2026-09-25. The reasoning behind each item is in `Engineering_log.md`.*
+*Updated 2026-11-11. The reasoning behind each item is in `Engineering_log.md`.*
 
+0. **Before the motor bench test — close the ESP32 hang hole (OPEN-019).** The ESC
+   pulses come from the LEDC hardware peripheral, which keeps emitting the last pulse if
+   the CPU hangs; the failsafe lives in `loop()` and would hang with it, and no hardware
+   watchdog is enabled. (a) Enable the loop watchdog (~1 s → reset; the firmware boots
+   latched). (b) On the bench, pull the ESC signal wire with the motor at 10% and confirm
+   the ESC stops on loss of signal — that is what makes (a), and a dead ESP32, safe.
 1. **Bench test of ESCs and motors.** Motor and jet are a single unit, so they cannot be
    uncoupled: dry, only ~1 s pulses at 10% (the ESP32 failsafe ends each one by itself);
    anything longer with the jet in a tub. Commands by hand from the Arduino Serial Monitor
@@ -88,6 +94,11 @@ Phase 1 — software MVP validated in simulation, GPS integrated and validated o
    then do the drawings go to the carpenter.
 
 In parallel: run `main.py --gps --sim` on the Pi with the real receiver.
+Later, before the tether comes off: RC receiver driving a normally-open relay per hull
+(energised to run), independent of the Pi and the ESP32; operator heartbeat over Wi-Fi as
+a zero-cost interim. Current sensing: reconsider INA228 + shunt per hull against the
+ACS758 before buying (hardware charge accumulator, no 5 V ratiometric error, solves
+OPEN-012).
 Heading is unblocked (10 Nov): calibrate on the mounted tray, measure the mounting
 offset and declination. Blocked, nothing to do: remote kill switch (budget).
 

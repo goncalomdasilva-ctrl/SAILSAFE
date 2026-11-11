@@ -2772,3 +2772,54 @@ inofensivo; no barco é dar leme todo para um lado e para o outro a 5 Hz
 enquanto estiver virado ao contrário do alvo. Precisa de histerese no
 sentido de rotação (manter o sentido escolhido até o erro sair de uma banda
 à volta de 180°). **OPEN-018.**
+
+### 2026-11-11 (decisões para a próxima sessão: corte independente e corrente)
+
+Conversa de fim de noite, sem bancada. Ficam registadas para não se perderem.
+
+#### O ESP32 encravado deixa os motores a andar (OPEN-019)
+O `esp32.ino` gera os pulsos dos ESCs com o `ESP32Servo`, que usa o periférico
+LEDC: o PWM é feito em hardware e **continua a sair com o último valor se o
+processador bloquear**. O failsafe por timeout está no `loop()` e bloqueia com
+ele. Não há watchdog de hardware ativo. Um `loop()` encravado a 30% deixa o
+barco a 30%, e nenhuma camada atual o apanha — o Pi pode mandar STOP à vontade.
+
+Antes do ensaio dos motores:
+1. **Ligar o watchdog do loop** (~1 s → reinício). No reinício os GPIO voltam
+   ao estado por omissão e o PWM para; o firmware já arranca travado.
+2. **Medir o que o ESC faz sem sinal:** motor a 10%, tirar o fio de sinal,
+   tem de parar. É esta propriedade do ESC que torna seguro o ponto 1 — e um
+   ESP32 sem alimentação ou morto. Não assumir; é de catálogo até se ver.
+
+#### Corte físico à distância: revisita a decisão de julho
+Em julho rejeitou-se o corte de potência por rádio porque impediria o RTH.
+Hoje não há RTH, e o argumento não pesa contra um corte de **último
+recurso** que coexista com o recall por software. Proposta: recetor RC →
+módulo de interruptor RC → relé (ou interruptor eletrónico) **normalmente
+aberto, energizado para andar**, no positivo de cada bateria de propulsão,
+sem passar pelo Pi nem pelo ESP32. Perda de sinal, falta de alimentação do
+recetor ou o interruptor do rádio abrem-no. Custo estimado ~15–25 € para os
+dois cascos, mais o rádio (FS-i6 ~40–50 € ou ELRS ~70–80 €; por confirmar).
+Bobina ~150 mA por relé, a somar ao orçamento de energia.
+
+Intermédio sem custo: **heartbeat do operador** por Wi-Fi (o portátil manda
+sinal a ~5 Hz; sem ele ~1 s, o Pi faz STOP). Cobre a perda de Wi-Fi, não um
+Pi vivo e errado. Aceitável em água calma e recuperável, com corda solta só
+depois disto e do ponto acima.
+
+#### Corrente e coulomb counting: reconsiderar antes de comprar
+O ACS758 no A3 serve para corrente instantânea mas é fraco para integrar:
+offset que deriva com a temperatura e se acumula, saída ratiométrica ao 5 V
+sem canal para a corrigir, amostragem pontual de uma corrente com ripple de
+ESC, e só um casco (OPEN-012). Alternativa: **INA228 + shunt** por casco, no
+I2C — acumulador de carga em hardware, sem erro ratiométrico, endereços
+configuráveis, liberta os canais do ADS1015. Contas no Pi chegam. Sem BMS: a
+proteção da LiPo é carga balanceada, LVC do ESC configurado para 3S, fusível,
+e guarda por tensão por célula com compensação da queda pela corrente — o
+coulomb counting é para autonomia, não para proteção, porque deriva. O
+aviso na interface não chega: a decisão tem de ser automática e travada,
+como no `battery_guard`.
+
+#### Próximo passo
+1. OPEN-019 (watchdog + ESC sem sinal), depois o ensaio dos motores.
+2. Rádio + relé quando houver orçamento; heartbeat do operador antes disso.
